@@ -1,0 +1,15 @@
+An LLM might hallucinate due to several reasons:
+
+1. **Training Data Limitations**: The model is trained on vast datasets that may contain inaccuracies or biases, leading to incorrect outputs.
+
+2. **Ambiguity in Queries**: Vague or ambiguous prompts can cause the model to generate responses that are not grounded in factual information.
+
+3. **Pattern Recognition**: LLMs generate text based on patterns rather than understanding, which can result in plausible-sounding but false information.
+
+4. **Lack of Real-Time Knowledge**: The model does not have access to current events or real-time data, which can lead to outdated or incorrect responses.
+
+5. **Overgeneralization**: The model may apply learned patterns too broadly, leading to incorrect conclusions or statements.
+
+6. **Creative Generation**: Sometimes, the model is designed to generate creative content, which can lead to imaginative but inaccurate outputs.
+
+These factors contribute to the phenomenon of hallucination in language models.
