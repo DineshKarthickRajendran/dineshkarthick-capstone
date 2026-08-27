@@ -67,7 +67,7 @@ async def ask_llm(q: Question, fail_rate: float = 0.0) -> Answer:
         ans = Answer(
             question=q.text,
             text=resp.choices[0].message.content,
-            cost_usd=resp.usage.total_tokens,  # real cost-from-usage lands in W25
+            cost_usd=0.0001,  # real cost-from-usage lands in W25
         )
     log.info(f"asked: {q.text[:40]}")
     return ans
