@@ -67,7 +67,7 @@ async def ask_llm(q: Question, fail_rate: float = 0.0) -> Answer:
         ans = Answer(
             question=q.text,
             text=resp.choices[0].message.content,
-            cost_usd=0.0001,  # real cost-from-usage lands in W25
+            cost_usd=resp.usage.total_tokens,  # real cost-from-usage lands in W25
         )
     log.info(f"asked: {q.text[:40]}")
     return ans
@@ -186,9 +186,9 @@ if __name__ == "__main__":
     # # SQLite persistence
     # # Deferred import: store.py imports Answer from this module; top-level import
     # # would cause a circular import.
-    # from .store import connect, write_answers, write_run
+    from .store import connect, write_answers, write_run
 
-    # with connect(settings.results_db) as con:
-    #     run_id = write_run(con, summary)
-    #     n = write_answers(con, run_id, answers)
-    # log.info(f"persisted run {run_id} with {n} answers to {settings.results_db}")
+    with connect(settings.results_db) as con:
+        run_id = write_run(con, summary)
+        n = write_answers(con, run_id, answers)
+    log.info(f"persisted run {run_id} with {n} answers to {settings.results_db}")
