@@ -1,3 +1,10 @@
+"""Tiny SQLite persistence — two tables, one writer per table.
+
+Schema:
+  runs    — one row per pipeline execution (mirrors RunSummary fields)
+  answers — one row per LLM call, FK-linked to runs.id
+"""
+
 from __future__ import annotations
 import sqlite3
 import time
@@ -35,9 +42,10 @@ CREATE TABLE IF NOT EXISTS answers (
 
 def connect(path: str | Path = "results.db") -> sqlite3.Connection:
     """Open (or create) the database, ensure both tables exist, return the connection."""
-    conn = sqlite3.connect(path)
-    conn.execute(SCHEMA)
-    return conn
+    con = sqlite3.connect(path)
+    con.executescript(SCHEMA)
+    con.commit()
+    return con
 
 
 def write_run(con: sqlite3.Connection, summary: RunSummary) -> int:
@@ -62,7 +70,9 @@ def write_run(con: sqlite3.Connection, summary: RunSummary) -> int:
 
 
 def write_answers(
-    con: sqlite3.Connection, run_id: int, answers: Iterable[Answer]
+    con: sqlite3.Connection,
+    run_id: int,
+    answers: Iterable[Answer],
 ) -> int:
     """Bulk-insert all answers for a given run. Returns the number of rows inserted."""
     ts = time.time()

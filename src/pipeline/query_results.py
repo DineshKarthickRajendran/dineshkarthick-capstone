@@ -46,7 +46,7 @@ def main() -> None:
     if len(sys.argv) > 1 and sys.argv[1] == "--runs":
         show_runs(con)
     else:
-        pattern = sys.argv[1] if len(sys.argv > 1) else ""
+        pattern = sys.argv[1] if len(sys.argv) > 1 else ""
         search_answers(con, pattern)
 
 
