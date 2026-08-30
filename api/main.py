@@ -1,15 +1,16 @@
-"""api/main.py — STARTER for Week 3 Lab Step 1.
+"""api/main.py — REFERENCE for Week 3 Lab Step 1.
 
-You will complete this file across sub-steps 1b → 1f. Each TODO matches a
-sub-step in the lab guide.
+The completed version. Wraps the W2 async pipeline behind a stable HTTP
+contract (Question/Answer with field names question/content) while delegating
+to the W2 pipeline internally.
 
-The completed reference is at <cohort-repo>/week3/reference/api_main_reference.py.
+Run with:
+    uvicorn api.main:app --reload --port 8000
 
-Architecture note: this file holds the *public* W3 API contract — Question
-with field `question`, Answer with fields `content/cost_usd/retries`. These
-are locked in ADR 0002. Internally we delegate to the W2 pipeline's
-`ask_llm`, whose Question has field `text` and whose Answer has field `text`.
-The translation happens inside each endpoint.
+Hit with curl:
+    curl -X POST http://localhost:8000/ask_batched \
+         -H "Content-Type: application/json" \
+         -d '{"question": "What is RAG?"}'
 """
 
 import asyncio
