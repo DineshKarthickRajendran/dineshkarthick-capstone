@@ -1,4 +1,4 @@
-# ADR 0002 — /v1/ask API Contract
+# ADR 0002 — /ask API Contract
 
 **Status:** Locked from Week 3.
 **Defended at:** Design Review #1 (Week 5).
@@ -61,7 +61,7 @@ Returns `{"status": "ok"}` with HTTP 200 when the service is alive.
 
 ## Versioning Rule
 
-- `/v1/ask` is locked from Week 3.
+- `/ask` is locked from Week 3.
 - **Don't bump** for additive changes:
   - New optional fields on Answer
   - Internal model swaps (including changes to the W2 pipeline's `text`-named fields)
@@ -74,7 +74,7 @@ Returns `{"status": "ok"}` with HTTP 200 when the service is alive.
   - Required ↔ optional change
   - Semantic change to a field's meaning
   - Change to the error-response shape
-- When `/v2/ask` ships, `/v1/ask` runs in parallel for **at least 2 weeks**
+- When `/v2/ask` ships, `/ask` runs in parallel for **at least 2 weeks**
   before retirement; consumers get an `X-Deprecation` warning header.
 - Schema versioning on the response body lands in W4 (`schema_version` field
   added to `Answer`). The endpoint contract is separate from the body schema.
@@ -83,7 +83,7 @@ Returns `{"status": "ok"}` with HTTP 200 when the service is alive.
 
 - **Positive.** The Streamlit UI, the W5 eval harness, and any later consumer
   integrate once. W4 → W30 internal changes happen behind the contract.
-- **Negative.** We commit to maintaining `/v1/ask` even when its internals
+- **Negative.** We commit to maintaining `/ask` even when its internals
   become legacy. Acceptable cost.
 - **Open.** Authentication is out of scope for v1. When we layer it in W28/W29
   it will require an `Authorization` header but won't change the request or
