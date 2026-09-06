@@ -63,10 +63,10 @@ app = FastAPI(
 async def ask_batched(q: Question) -> Answer:
     """Non-Streaming. Returns the full Answer in a single JSON body"""
     log.info("ask batched question=%r", q.question[:80])
-    pipeline_q = _PipelineQuestion(text=q.question)
+    pipeline_q = _PipelineQuestion(question=q.question)
     pipeline_ans = await _pipeline_ask_llm(pipeline_q)
     return Answer(
-        content=pipeline_ans.text,
+        content=pipeline_ans.content,
         cost_usd=pipeline_ans.cost_usd,
         retries=pipeline_ans.retries,
     )
@@ -90,9 +90,9 @@ async def stream_answer(question_text: str):
     non-streaming. In W4 the LLM call becomes a real stream end-to-end — this
     generator's shape doesn't change, only what fills it.
     """
-    pipeline_q = _PipelineQuestion(text=question_text)
+    pipeline_q = _PipelineQuestion(question=question_text)
     pipeline_ans = await _pipeline_ask_llm(pipeline_q)
-    for word in pipeline_ans.text.split(" "):
+    for word in pipeline_ans.content.split(" "):
         yield word + " "
         await asyncio.sleep(0.05)
 

@@ -34,9 +34,9 @@ async def test_ask_llm_calls_fake_once():
     )
 
     with patch(
-        "src.pipeline.pipeline.fake_ask_llm", AsyncMock(return_value=fake_answer)
+        "src.pipeline.pipeline_W3.fake_ask_llm", AsyncMock(return_value=fake_answer)
     ) as m:
-        from src.pipeline.pipeline import ask_llm
+        from src.pipeline.pipeline_W3 import ask_llm
 
         result = await ask_llm(Question(text="What is RAG?"))
 
@@ -59,13 +59,13 @@ async def test_retry_three_times_on_failure():
     """
 
     with patch(
-        "src.pipeline.pipeline.fake_ask_llm",
+        "src.pipeline.pipeline_W3.fake_ask_llm",
         AsyncMock(side_effect=FakeLLMError("simulated")),
     ) as m_call, patch(
-        "src.pipeline.pipeline.asyncio.sleep",
+        "src.pipeline.pipeline_W3.asyncio.sleep",
         AsyncMock(),
     ):
-        from src.pipeline.pipeline import ask_llm_with_retry
+        from src.pipeline.pipeline_W3 import ask_llm_with_retry
 
         with pytest.raises(FakeLLMError):
             await ask_llm_with_retry(Question(text="What is RAG?"), tries=3)
