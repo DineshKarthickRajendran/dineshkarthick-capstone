@@ -1,8 +1,8 @@
 # ADR-0001: Capstone Framing - Knowledge Assistant
 
 - **Status:** Draft v1
-- **Date:** YYYY-MM-DD
-- **Author:** Your Name
+- **Date:** 2026-08-16
+- **Author:** Dinesh Karthick
 
 ## Context
 
