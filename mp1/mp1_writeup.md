@@ -1,17 +1,25 @@
 # MP1 Prompt Lab Reflection
 
-## 1. Which prompt strategy performed best, and why?
+The strategies are discussed in the same order as the `STRATEGIES` variable: `Zero_shot`, `Few_shot`, `Structured`, and `CoT`.
 
-From the Step 5 results, the few-shot prompt performed best on exact-match accuracy, with a mean score of 2.9 out of 3. It also tied the structured prompt for the highest judge score at 3.9. The examples gave the model concrete guidance for identifying company names, roles, and experience requirements. The structured prompt was a close second with 2.8 accuracy and a 3.9 judge score, while zero-shot and chain-of-thought both scored 2.7 on accuracy. All four strategies had a 1.0 parse rate.
+## 1. Which strategy won, and on what dimension?
 
-## 2. What did you learn about prompt design and model reliability?
+CoT was the strongest overall strategy in this run. It tied Few_shot for the highest accuracy at 2.90 out of 3 fields, achieved the highest judge score at 25.00 out of 25, and maintained a 100.00% parse rate. Structured was the fastest at 1.663 seconds and scored 24.38 out of 25, so it was the best choice on latency and a strong alternative for a production pipeline. Few_shot also reached 2.90 accuracy, but its judge score was lower at 23.75 and it had the highest cost at $0.00047760. Zero_shot had the lowest cost at $0.00029280, but its 0.00% parse rate made the output unusable.
 
-I learned that even small prompt changes can make a big difference. When the model is asked to return exact JSON and to use `null` when information is missing, it is much more likely to behave correctly. I also learned that AI models can sometimes sound confident even when they are guessing, which is a big issue in extraction tasks. The Step 5 summary showed that parse success stayed at 1.0 for all strategies, which means the output format was mostly valid, but quality still changed depending on the prompt. That taught me that prompt design is not only about format, but also about reducing hallucinations and making the answer more trustworthy.
+Accuracy measures the mean number of correct values among `company_name`, `job_role`, and `minimum_years_experience`. Parse rate measures whether the response could be loaded as valid JSON. Judge score is the evaluator's 1-to-4 result rescaled to 25 points. These metrics show why cost alone is not a useful winner criterion: Zero_shot was cheapest, but it produced no usable records, while CoT provided the best quality and reliable parsing.
 
-## 3. How did the strategies trade off on cost, latency, and parse success?
+## 2. What surprised you?
 
-The final comparison showed a clear trade-off. Zero-shot had the lowest latency at 1.756 seconds, followed closely by chain-of-thought at 1.760 seconds. Few-shot had the highest accuracy and a 1.886-second median latency. Structured had the highest latency at 2.020 seconds, although it matched few-shot's judge score. Few-shot was the only strategy with a rounded total cost of $0.001; the other three rounded to $0.000. Every strategy had a 1.0 parse rate, so formatting reliability did not distinguish them in this run.
+The biggest surprise was the complete Zero_shot failure. Its cost was only $0.00029280, but its parse rate and accuracy were both 0.00%, and its judge score was only 6.25 out of 25. This shows that a short prompt can be operationally worse than a slightly more detailed prompt when the output contract is not enforced clearly.
 
-## 4. What would I change for a production or follow-up version?
+It was also notable that CoT performed well despite using a very small number of instructions: it reached 2.90 accuracy, a perfect 25.00 judge score, and a 100.00% parse rate. Structured was not the most accurate strategy, but it was fastest and still scored 24.38 out of 25. For an HR knowledge assistant, the equivalent risk is not only malformed output but also a confident answer based on the wrong policy version, employee group, location, or effective date.
 
-If I were improving this project, I would use the few-shot prompt as the initial default for accuracy, while keeping the structured prompt as a strong alternative when maintainability and explicit instructions matter most. I would add a validation step after every model response: check that the JSON has the required keys and that `years_experience_required` is an integer or `null`. I would also run the comparison over a larger dataset and repeat it across multiple runs, because this evaluation used only 10 snippets and the cost values were rounded. The results show that examples improved accuracy here, but the difference should be tested for statistical stability before making a production decision.
+## 3. For your capstone domain, which strategy would you reach for first?
+
+My capstone will be an HR knowledge enterprise assistant that helps employees and HR teams find reliable answers about policies, benefits, leave, onboarding, payroll processes, and compliance procedures. I would reach for CoT first because it produced the best combination of accuracy, judged quality, and parse reliability, which is valuable when the assistant must identify the user's intent, locate the relevant policy, and distinguish exceptions or eligibility conditions. I would use Structured for the final answer contract so every response can include an answer, source citation, policy effective date, confidence, and an escalation flag.
+
+## 4. If you had another day, what would you try next?
+
+I would first build a domain-specific evaluation set for the HR assistant, covering policy version conflicts, location-specific benefits, employee-type differences, leave eligibility, payroll cut-off dates, and questions that should be escalated to HR. I would compare retrieval quality as well as answer quality by measuring citation correctness, groundedness, refusal accuracy, and whether the assistant identifies when the knowledge base does not contain enough information.
+
+I would also test a model with native structured-output or JSON-schema support and compare it with the current model. Finally, I would add deterministic validation and enterprise safeguards: require source citations and policy effective dates, apply role-based access controls to sensitive HR documents, prevent exposure of personal employee data, reject unsupported claims, and route high-risk questions to a human HR specialist. These changes would directly address the Zero_shot failure while making the system appropriate for confidential, policy-sensitive HR use.
