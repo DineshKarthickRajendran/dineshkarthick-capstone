@@ -1,7 +1,7 @@
 # ADR-0001: Capstone Framing - Knowledge Assistant
 
-- **Status:** Draft v1
-- **Date:** 2026-08-16
+- **Status:** Draft v2
+- **Date:** 2026-09-30
 - **Author:** Dinesh Karthick
 
 ## Context
@@ -21,28 +21,28 @@ with an owner and review date recorded for each source. No employee records,
 performance reviews, medical information, compensation data, or other sensitive
 personal data will be indexed in the capstone corpus.
 
-Planned document set (15–20 documents):
+Planned document set (20 documents, matching `data/corpus/`):
 
-1. Employee handbook and code of conduct
-2. Anti-harassment and respectful workplace policy
-3. Equal employment opportunity and non-discrimination policy
-4. Recruitment and selection process guide
-5. Onboarding and probation guide
-6. Working hours, attendance, and timekeeping policy
-7. Leave and time-off policy
-8. Sick leave and reasonable accommodation process
-9. Flexible and remote work policy
-10. Compensation and payroll FAQ
-11. Benefits enrollment and eligibility guide
-12. Performance management and review guide
-13. Learning, development, and training policy
-14. Internal mobility and promotion process
-15. Grievance, complaint, and investigation process
-16. Disciplinary and corrective-action process
-17. Resignation, termination, and offboarding guide
-18. Workplace health, safety, and emergency contacts
-19. Data privacy and HR-records handling policy
-20. HR systems and service-desk escalation guide
+1. Leave Policy (`01_leave_policy.md`)
+2. Expense Reimbursement Policy (`02_expense_policy.md`)
+3. Work From Home Policy (`03_wfh_policy.md`)
+4. Bring Your Own Device Policy (`04_byod_policy.md`)
+5. Workplace Dress Code (`05_dress_code.md`)
+6. Attendance and Punctuality Policy (`06_attendance_policy.md`)
+7. Employee Code of Conduct (`07_code_of_conduct.md`)
+8. Remote Work Security Policy (`08_remote_security_policy.md`)
+9. Recruitment and Hiring Policy (`09_recruitment_policy.md`)
+10. Employee Onboarding Policy (`10_onboarding_policy.md`)
+11. Performance Management Policy (`11_performance_management.md`)
+12. Promotion and Internal Mobility Policy (`12_promotion_policy.md`)
+13. Learning and Development Policy (`13_training_development_policy.md`)
+14. Employee Grievance Policy (`14_grievance_policy.md`)
+15. Anti-Harassment and Respectful Workplace Policy (`15_harassment_policy.md`)
+16. Confidentiality and Information Handling Policy (`16_confidentiality_policy.md`)
+17. IT Acceptable Use Policy (`17_it_acceptable_use_policy.md`)
+18. Business Travel Policy (`18_travel_policy.md`)
+19. Employee Data Privacy Policy (`19_employee_data_privacy.md`)
+20. Employee Offboarding Policy (`20_offboarding_policy.md`)
 
 The existing `data/questions.csv` and `data/questions_w3.csv` files will remain
 useful as baseline questions about RAG, APIs, and agent behavior. They will be
@@ -84,3 +84,67 @@ out-of-scope requests.
 - Retrieval and reranking strategy, chunk size, citation format, and confidence thresholds.
 - Privacy, authentication, audit logging, retention, and redaction before any real HR data is introduced.
 - Agent tool permissions and human handoff workflow for later agentic releases.
+
+## W6 — Naive RAG live
+
+**Decision:** Naive RAG is now the default answer path. `/ask_batched` retrieves
+top-3 chunks from `data/corpus/` before generating.
+
+**Baseline KPIs** (see docs/kpi/wk6-snapshot.md):
+- Cost/query: $0.000XXX
+- Latency p50: XXX ms
+- Grounded response rate: XX%
+
+**Top 3 known limits** (to be addressed W7-W11):
+1. Chunking cuts mid-sentence — W7 fixes with structure-aware chunker
+2. Retrieval is pure dense — W9 adds BM25 hybrid
+3. No metadata filtering — W7 introduces via Qdrant payload
+
+**Status:** In production for the demo API. Not yet suitable for real users;
+retrieval quality needs W7-W9 improvements first.
+
+## Section 4 — Decisions locked at M1
+
+| Decision area | M1 evidence | Decision locked |
+|---|---|---|
+| Default model | Lab 4, 10 questions per model: `gpt-4o-mini` cost $0.000839 total ($0.000084/query average) and took 20.72 s; `gpt-4o` cost $0.015688 total ($0.001569/query average) and took 24.72 s. `gpt-4o` cost about 18.7x more. | Use `gpt-4o-mini` by default for straightforward questions; use `gpt-4o` for high-impact, ambiguous, or multi-step questions when its added quality is justified. |
+| M1 answer-quality baseline | W5 eval-run-001: 20 golden questions; mean accuracy 2.5/4, groundedness 2.5/4, and format 3.15/4. | Keep the 20-question golden-set evaluation as the quality baseline and improve accuracy and groundedness before real-user use. |
+| Cost and quality trade-off | Lab 4 found similar answers for most questions, with clearer `gpt-4o` gains on schema-version reasoning and somewhat more precise usage reporting. | Do not use the higher-cost model universally; reserve it for cases where reasoning quality matters. |
+
+## Section 5 — Sponsor KPIs
+
+These are three sponsor KPIs selected from the Stakeholder Map. Targets are for W12 / DR #2. Baselines are M1 evidence available on 2026-10-04; items not instrumented are called out explicitly.
+
+| KPI | M1 measurement | W12 target |
+|---|---|---|
+| Answer quality | W5 eval-run-001: mean accuracy 2.5/4 (62.5% of the maximum); citation correctness and user usefulness were not separately measured. | At least 85% of monthly evaluation answers are supported and correctly cited; at least 80% of sampled users rate answers useful. |
+| Safety and governance | No sensitive/out-of-scope red-team cases were reported as run (0 cases measured). Corpus audit: 20/20 documents name a policy owner or responsible function; 0/20 state an explicit review date. | At least 95% of sensitive/out-of-scope tests are correctly refused or escalated; 100% of indexed documents have an owner and review date. |
+| Time and HR workload | Stakeholder-map workflow estimate: 10–15 minutes to find an answer through current search and follow-up. Routine HR tickets per 100 employees have no measured M1 baseline. | Median time to a useful answer under 60 seconds; routine HR tickets per 100 employees reduced by 20% within one quarter of launch. |
+
+## Section 6 — Evaluation baseline
+
+W5 `eval-run-001` (`run_id: 1790942211`) evaluated 20 golden questions:
+
+| Aggregate metric | Baseline |
+|---|---:|
+| Mean accuracy | 2.5 / 4 |
+| Mean groundedness | 2.5 / 4 |
+| Mean format | 3.15 / 4 |
+| Golden questions | 20 |
+
+Source: `docs/eval-run-001.md`. These are judge scores, not percentages of answers passing a citation or safety threshold.
+
+## Section 9 — Open questions
+
+1. What citation correctness rate do employees achieve on real questions, beyond the current aggregate groundedness score?
+2. Which sensitive and out-of-scope scenarios must be included in the refusal and escalation test set, and who approves its coverage?
+3. What are the measured production baselines for time to a useful answer and routine HR tickets per 100 employees, segmented by geography and employee type?
+
+## Section 10 — DR #1 defence
+
+
+## Section 11 — Change log
+
+| Date | Change |
+|---|---|
+| 2026-10-04 | Added M1 model and evaluation decisions, three sponsor KPI baselines and W12 targets, the W5 evaluation aggregate, three open questions, and the reserved DR #1 defence section. |
