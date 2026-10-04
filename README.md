@@ -4,7 +4,7 @@ A 30-week build of a Q&A assistant over a small document corpus, completed as pa
 
 ## Corpus
 
-My capstone corpus: FastAPI documentation (5 pages: tutorial intro, dependencies, security, testing, deployment). Source: https://fastapi.tiangolo.com/
+My capstone corpus: 20 HR policy documents in `data/corpus/`, covering leave, expenses, remote work, BYOD, dress code, attendance, conduct, security, recruitment, onboarding, performance, promotion, training, grievances, harassment, confidentiality, acceptable use, travel, employee data privacy, and offboarding. The planned document set is recorded in [the capstone framing ADR](docs/adr/0001-capstone-framing.md).
 
 ## Structure
 
