@@ -36,7 +36,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--db", default="data/answers.db")
     parser.add_argument("--api-url", default=DEFAULT_API_URL)
     parser.add_argument("--judge-model", default="gpt-4o")
-    parser.add_argument("--label", default="eval-run-001")
+    parser.add_argument("--label", default="eval-run-002")
     return parser.parse_args(argv)
 
 
