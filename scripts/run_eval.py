@@ -12,6 +12,7 @@ Usage:  python scripts/run_eval.py
 
 from __future__ import annotations
 import argparse
+import sqlite3
 import statistics
 import sys
 import time
@@ -22,7 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import httpx
 
 from src.eval.golden import load_golden
-from src.eval.judge import judge
+from src.eval.judge import judge_with_telemetry
 from src.pipeline import store
 
 DEFAULT_API_URL = "http://localhost:8000"
@@ -40,15 +41,30 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def get_candidate(question: str, api_url: str) -> tuple[str, list[str]]:
+def get_candidate(question: str, api_url: str) -> dict:
     """Ask the running app for an answer."""
     endpoint = api_url.rstrip("/")
     if not endpoint.endswith("/ask_batched"):
         endpoint += "/ask_batched"
-    r = httpx.post(endpoint, json={"question": question}, timeout=60.0)
-    r.raise_for_status()
-    data = r.json()
-    return data["content"], data.get("sources", [])
+    started = time.perf_counter()
+    response = httpx.post(endpoint, json={"question": question}, timeout=60.0)
+    response.raise_for_status()
+    data = response.json()
+    return {
+        "content": data["content"],
+        "sources": data.get("sources", []),
+        "model": data.get("candidate_model"),
+        "cost_usd": data.get("cost_usd"),
+        "latency_ms": (time.perf_counter() - started) * 1000,
+        "prompt_tokens": data.get("prompt_tokens"),
+        "completion_tokens": data.get("completion_tokens"),
+        "embedding_tokens": data.get("embedding_tokens"),
+    }
+
+
+def source_document_id(source: str) -> str:
+    """Normalize either a source ID or chunk ID to its document ID."""
+    return source.partition("#")[0]
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -58,19 +74,52 @@ def main(argv: list[str] | None = None) -> None:
     db_path.parent.mkdir(parents=True, exist_ok=True)
     run_id = int(time.time())
     report_path = Path("docs") / f"{args.label}.md"
+    if report_path.exists():
+        raise SystemExit(
+            f"Report already exists: {report_path}; choose a unique --label"
+        )
+    with sqlite3.connect(db_path) as check_conn:
+        has_eval_runs = check_conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'eval_runs'"
+        ).fetchone()
+        if (
+            has_eval_runs
+            and check_conn.execute(
+                "SELECT 1 FROM eval_runs WHERE eval_run_label = ? LIMIT 1",
+                (args.label,),
+            ).fetchone()
+        ):
+            raise SystemExit(
+                f"Run label already exists in {db_path}: {args.label!r}; "
+                "choose a unique --label"
+            )
 
     rows, accs, grds, fmts = [], [], [], []
+    candidate_costs, candidate_latencies = [], []
+    judge_costs, judge_latencies = [], []
+    retrieval_hits = []
     with store.connect(db_path) as con:
         for g in golden:
-            candidate, _sources = get_candidate(g.question, args.api_url)
-            s = judge(
+            candidate_metrics = get_candidate(g.question, args.api_url)
+            candidate = candidate_metrics["content"]
+            expected_sources = set(g.expected_sources)
+            retrieved_sources = {
+                source_document_id(source) for source in candidate_metrics["sources"]
+            }
+            candidate_metrics["expected_sources"] = sorted(expected_sources)
+            candidate_metrics["retrieval_hit"] = (
+                bool(expected_sources & retrieved_sources) if expected_sources else None
+            )
+            judge_started = time.perf_counter()
+            s, judge_metrics = judge_with_telemetry(
                 g.question,
                 g.ideal_answer,
                 candidate,
                 g.must_mention,
                 model=args.judge_model,
             )
-            store.write_eval_run(
+            judge_metrics["latency_ms"] = (time.perf_counter() - judge_started) * 1000
+            eval_run_id = store.write_eval_run(
                 con,
                 golden_id=g.id,
                 question=g.question,
@@ -80,17 +129,45 @@ def main(argv: list[str] | None = None) -> None:
                 scores=s,
                 label=args.label,
             )
-            rows.append((g.id, candidate, s))
+            store.write_eval_telemetry(
+                con,
+                eval_run_id=eval_run_id,
+                candidate=candidate_metrics,
+                judge=judge_metrics,
+            )
+            rows.append((g.id, candidate, s, candidate_metrics, judge_metrics))
             accs.append(s["accuracy"])
             grds.append(s["groundedness"])
             fmts.append(s["format"])
+            if candidate_metrics["cost_usd"] is not None:
+                candidate_costs.append(candidate_metrics["cost_usd"])
+            candidate_latencies.append(candidate_metrics["latency_ms"])
+            if judge_metrics["cost_usd"] is not None:
+                judge_costs.append(judge_metrics["cost_usd"])
+            judge_latencies.append(judge_metrics["latency_ms"])
+            if candidate_metrics["retrieval_hit"] is not None:
+                retrieval_hits.append(candidate_metrics["retrieval_hit"])
             print(
                 f"{g.id}: acc={s['accuracy']} grnd={s['groundedness']} fmt={s['format']}  "
-                f"| {candidate[:60]}"
+                f"hit@3={candidate_metrics['retrieval_hit']} "
+                f"cand_cost={candidate_metrics['cost_usd']} "
+                f"cand_ms={candidate_metrics['latency_ms']:.1f} "
+                f"judge_cost={judge_metrics['cost_usd']} "
+                f"judge_ms={judge_metrics['latency_ms']:.1f} | {candidate[:60]}"
             )
 
     n = len(rows)
     avg = lambda xs: round(statistics.mean(xs), 2) if xs else 0.0
+    avg_cost = lambda xs: statistics.mean(xs) if xs else None
+    median_ms = lambda xs: statistics.median(xs) if xs else None
+    retrieval_rate = (
+        f"{sum(retrieval_hits)}/{len(retrieval_hits)} "
+        f"({statistics.mean(retrieval_hits) * 100:.1f}%)"
+        if retrieval_hits
+        else "not measured"
+    )
+    fmt_cost = lambda value: f"${value:.8f}" if value is not None else "not measured"
+    fmt_ms = lambda value: f"{value:.1f} ms" if value is not None else "not measured"
     lines = [
         f"# {args.label} ({n} golden questions)",
         "",
@@ -98,18 +175,43 @@ def main(argv: list[str] | None = None) -> None:
         f"- avg accuracy:     **{avg(accs)}** / 4",
         f"- avg groundedness: **{avg(grds)}** / 4",
         f"- avg format:       **{avg(fmts)}** / 4",
+        f"- retrieval hit@3:  **{retrieval_rate}**",
         "",
-        "| id | acc | grnd | fmt | candidate |",
-        "|----|-----|------|-----|-----------|",
+        "## Cost and latency",
+        "",
+        "Candidate latency is end-to-end API request time; judge latency is the local time around the judge call.",
+        "",
+        f"- Candidate cost total / average: {fmt_cost(sum(candidate_costs) if candidate_costs else None)} / {fmt_cost(avg_cost(candidate_costs))} ({len(candidate_costs)}/{n} measured)",
+        f"- Candidate latency median (p50): {fmt_ms(median_ms(candidate_latencies))}",
+        f"- Judge cost total / average: {fmt_cost(sum(judge_costs) if judge_costs else None)} / {fmt_cost(avg_cost(judge_costs))} ({len(judge_costs)}/{n} measured)",
+        f"- Judge latency median (p50): {fmt_ms(median_ms(judge_latencies))}",
+        "",
+        "| id | hit@3 | acc | grnd | fmt | retrieved sources | candidate cost | candidate ms | judge cost | judge ms | candidate |",
+        "|----|:-----:|-----|------|-----|-------------------|---------------:|-------------:|-----------:|---------:|-----------|",
     ]
-    for gid, cand, s in rows:
+    for gid, cand, s, candidate_metrics, judge_metrics in rows:
         c = cand.replace("|", "/")[:70]
+        hit_label = (
+            "yes"
+            if candidate_metrics["retrieval_hit"] is True
+            else "no" if candidate_metrics["retrieval_hit"] is False else "n/a"
+        )
         lines.append(
-            f"| {gid} | {s['accuracy']} | {s['groundedness']} | {s['format']} | {c} |"
+            f"| {gid} | {hit_label} | "
+            f"{s['accuracy']} | {s['groundedness']} | {s['format']} | "
+            f"{', '.join(candidate_metrics['sources'])} | "
+            f"{fmt_cost(candidate_metrics['cost_usd'])} | "
+            f"{fmt_ms(candidate_metrics['latency_ms'])} | "
+            f"{fmt_cost(judge_metrics['cost_usd'])} | "
+            f"{fmt_ms(judge_metrics['latency_ms'])} | {c} |"
         )
     with report_path.open("w", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")
-    print(f"\nWrote {report_path}  (avg accuracy {avg(accs)}/4 over {n} questions)")
+    print(
+        f"\nWrote {report_path}  (avg accuracy {avg(accs)}/4 over {n} questions; "
+        f"candidate avg cost {fmt_cost(avg_cost(candidate_costs))}, "
+        f"candidate p50 {fmt_ms(median_ms(candidate_latencies))})"
+    )
 
 
 if __name__ == "__main__":

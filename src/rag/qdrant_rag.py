@@ -6,15 +6,21 @@ Storage layer swapped from JSON+numpy to Qdrant.
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
 from openai import OpenAI
 
+from src.pipeline.cost import compute_cost_usd
 from src.pipeline.settings import Settings
 from src.rag.qdrant_store import QdrantStore, load_store
 
 CHAT_MODEL = "gpt-4o-mini"
-EMBED_MODEL = "text-embedding-3-small"
+EMBED_MODEL = os.environ.get("EMBEDDING_MODEL", "text-embedding-3-small")
+EMBEDDING_COST_PER_MILLION = {
+    "text-embedding-3-small": 0.02,
+    "text-embedding-3-large": 0.13,
+}
 
 _client = None
 
@@ -27,15 +33,27 @@ def _openai() -> OpenAI:
     return _client
 
 
+def _embed_query_with_usage(text: str) -> tuple[list[float], int]:
+    resp = _openai().embeddings.create(model=EMBED_MODEL, input=[text])
+    return resp.data[0].embedding, resp.usage.prompt_tokens
+
+
 def embed_query(text: str) -> list[float]:
     """Single-string embedding. Used at query time."""
-    resp = _openai().embeddings.create(model=EMBED_MODEL, input=[text])
-    return resp.data[0].embedding
+    return _embed_query_with_usage(text)[0]
 
 
-def retrieve(store: QdrantStore, query: str, k: int = 3) -> list[dict[str, Any]]:
+def retrieve(
+    store: QdrantStore,
+    query: str,
+    k: int = 3,
+    *,
+    usage: dict[str, int] | None = None,
+) -> list[dict[str, Any]]:
     """Embed the query, ask Qdrant for top-K, return list of hits."""
-    q_vec = embed_query(query)
+    q_vec, embedding_tokens = _embed_query_with_usage(query)
+    if usage is not None:
+        usage["embedding_tokens"] = embedding_tokens
     results = store.client.query_points(
         collection_name=store.collection,
         query=q_vec,
@@ -69,7 +87,8 @@ def ask_rag(
     if store is None:
         store = load_store()
 
-    retrieved = retrieve(store, question, k=k)
+    usage: dict[str, int] = {}
+    retrieved = retrieve(store, question, k=k, usage=usage)
 
     context = "\n\n".join(
         f"[{hit['chunk_id']}] (source: {hit['source_id']})\n{hit['text']}"
@@ -88,10 +107,23 @@ def ask_rag(
         ],
     )
 
+    prompt_tokens = resp.usage.prompt_tokens
+    completion_tokens = resp.usage.completion_tokens
+    embedding_tokens = usage["embedding_tokens"]
+    cost_usd = (
+        compute_cost_usd(CHAT_MODEL, prompt_tokens, completion_tokens)
+        + embedding_tokens
+        * EMBEDDING_COST_PER_MILLION.get(EMBED_MODEL, 0.0)
+        / 1_000_000
+    )
+
     return {
         "answer": resp.choices[0].message.content,
         "sources": [h["source_id"] for h in retrieved],
         "chunk_ids": [h["chunk_id"] for h in retrieved],
-        "tokens_in": resp.usage.prompt_tokens,
-        "tokens_out": resp.usage.completion_tokens,
+        "candidate_model": CHAT_MODEL,
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "embedding_tokens": embedding_tokens,
+        "cost_usd": cost_usd,
     }

@@ -53,7 +53,11 @@ async def ask_batched(q: Question) -> Answer:
     answer = Answer(
         content=result["answer"],
         sources=result["sources"],
-        cost_usd=(result["tokens_in"] * 0.15 + result["tokens_out"] * 0.60) / 1_000_000,
+        cost_usd=result["cost_usd"],
+        candidate_model=result["candidate_model"],
+        prompt_tokens=result["prompt_tokens"],
+        completion_tokens=result["completion_tokens"],
+        embedding_tokens=result["embedding_tokens"],
         # ... other fields as your W5 Answer schema requires
     )
 
@@ -66,7 +70,7 @@ async def ask_batched(q: Question) -> Answer:
             content=answer.content,
             retries=answer.retries,
             cost_usd=answer.cost_usd,
-            model=_settings.model,
+            model=answer.candidate_model or _settings.model,
             confidence=answer.confidence,
             sources=answer.sources,
             schema_version=answer.schema_version,

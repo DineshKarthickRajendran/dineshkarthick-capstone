@@ -1,5 +1,7 @@
 import os, json
 
+from src.pipeline.cost import compute_cost_usd
+
 USE_FAKE = (
     False  # <-- set False (and export OPENAI_API_KEY) to judge with the real gpt-4o
 )
@@ -73,17 +75,40 @@ def _fake_judge(question, ideal, candidate, must_mention):
     }
 
 
-def judge(question, ideal, candidate, must_mention, model=None):
+def judge_with_telemetry(question, ideal, candidate, must_mention, model=None):
+    selected_model = model or JUDGE_MODEL
     if USE_FAKE:
-        return _fake_judge(question, ideal, candidate, must_mention)
+        return _fake_judge(question, ideal, candidate, must_mention), {
+            "model": selected_model,
+            "prompt_tokens": None,
+            "completion_tokens": None,
+            "cost_usd": None,
+        }
     from openai import OpenAI
 
     client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
     resp = client.chat.completions.create(
-        model=model or JUDGE_MODEL,
+        model=selected_model,
         temperature=0,  # judging should be as consistent as possible
         messages=build_messages(question, ideal, candidate),
         tools=[JUDGE_TOOL],
         tool_choice={"type": "function", "function": {"name": "submit_scores"}},
     )
-    return json.loads(resp.choices[0].message.tool_calls[0].function.arguments)
+    prompt_tokens = resp.usage.prompt_tokens
+    completion_tokens = resp.usage.completion_tokens
+    scores = json.loads(resp.choices[0].message.tool_calls[0].function.arguments)
+    telemetry = {
+        "model": selected_model,
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "cost_usd": compute_cost_usd(selected_model, prompt_tokens, completion_tokens),
+    }
+    return scores, telemetry
+
+
+def judge(question, ideal, candidate, must_mention, model=None):
+    """Return scores only; use judge_with_telemetry when usage is needed."""
+    scores, _telemetry = judge_with_telemetry(
+        question, ideal, candidate, must_mention, model=model
+    )
+    return scores

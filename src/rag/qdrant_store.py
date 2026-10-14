@@ -21,8 +21,13 @@ from qdrant_client.models import (
 
 load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
-COLLECTION_NAME = "capstone_chunks"
-EMBEDDING_DIM = 1536  # text-embedding-3-small
+EMBEDDING_DIMS = {
+    "text-embedding-3-small": 1536,
+    "text-embedding-3-large": 3072,
+}
+EMBEDDING_MODEL = os.environ.get("EMBEDDING_MODEL", "text-embedding-3-small")
+COLLECTION_NAME = os.environ.get("QDRANT_COLLECTION", "capstone_chunks")
+EMBEDDING_DIM = EMBEDDING_DIMS.get(EMBEDDING_MODEL, 1536)
 
 
 @dataclass
@@ -53,9 +58,11 @@ def _get_client() -> QdrantClient:
     return QdrantClient(url=url)
 
 
-def load_store() -> QdrantStore:
+def load_store(collection_name: str | None = None) -> QdrantStore:
     """Return a QdrantStore pointing at the capstone_chunks collection."""
-    return QdrantStore(client=_get_client(), collection=COLLECTION_NAME)
+    return QdrantStore(
+        client=_get_client(), collection=collection_name or COLLECTION_NAME
+    )
 
 
 def ensure_collection(store: QdrantStore) -> None:

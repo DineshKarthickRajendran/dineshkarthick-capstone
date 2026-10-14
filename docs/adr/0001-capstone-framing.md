@@ -183,3 +183,21 @@ run condition was held constant.
 - Restart cost: O(1) — no re-load of vectors into memory
 - Ready for W8 metadata filtering
 - Evaluation: see `docs/eval-run-006-W7.md` for the comparison and remaining low-scoring questions
+
+### Embedding-model comparison
+
+**Final default:** Keep `text-embedding-3-small` for the capstone's default
+retrieval path. On the same 20 golden questions and isolated Qdrant collections,
+small achieved **20/20 hit@3 (100%)**, compared with **19/20 (95%)** for
+`text-embedding-3-large`. Large scored higher on mean accuracy (3.15 vs 2.90),
+groundedness (3.10 vs 2.90), and format (3.40 vs 3.20), but missed the expected
+code-of-conduct source for g007. It also had higher average query cost
+($0.00007785 vs $0.00007675), higher candidate p50 latency (2986.8 vs 2777.5 ms),
+and about 6.5x higher corpus indexing cost ($0.00299390 vs $0.00046060).
+
+The default prioritizes complete expected-source retrieval on this evaluation
+set, lower latency, and lower index-build cost. Large remains a possible
+targeted option if its judge-score advantage is valuable for quality-critical
+queries. This is a limited 20-question result, not a universal model ranking;
+the small-versus-large run details and hit@3 definition are in
+`docs/kpi/w7-comparions.md`.

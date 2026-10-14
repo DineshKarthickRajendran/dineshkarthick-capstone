@@ -32,3 +32,7 @@ class Answer(BaseModel):
     confidence: float = Field(default=1.0, ge=0.0, le=1.0)
     sources: list[str] = Field(default_factory=list)
     schema_version: str = "v1"
+    candidate_model: str | None = None
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+    embedding_tokens: int | None = None

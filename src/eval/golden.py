@@ -8,7 +8,8 @@ class GoldenEntry(BaseModel):
     question: str = Field(min_length=1)  # must be non-empty
     ideal_answer: str = Field(min_length=1)  # must be non-empty
     notes: str = ""  # optional, defaults to empty
-    must_mention: list[str] = []  # optional list of required facts
+    must_mention: list[str] = Field(default_factory=list)
+    expected_sources: list[str] = Field(default_factory=list)
 
 
 def load_golden(path):

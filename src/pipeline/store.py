@@ -42,6 +42,27 @@ CREATE TABLE IF NOT EXISTS eval_runs (
     eval_run_label   TEXT DEFAULT 'eval-run-001',
     created_at       TEXT DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS eval_call_telemetry (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    eval_run_id INTEGER NOT NULL UNIQUE,
+    candidate_model TEXT,
+    candidate_cost_usd REAL,
+    candidate_latency_ms REAL,
+    candidate_prompt_tokens INTEGER,
+    candidate_completion_tokens INTEGER,
+    candidate_embedding_tokens INTEGER,
+    judge_model TEXT NOT NULL,
+    judge_cost_usd REAL,
+    judge_latency_ms REAL,
+    judge_prompt_tokens INTEGER,
+    judge_completion_tokens INTEGER,
+    expected_sources_json TEXT,
+    retrieved_sources_json TEXT,
+    retrieval_hit INTEGER,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (eval_run_id) REFERENCES eval_runs(id) ON DELETE CASCADE
+);
 """
 
 _EXPECTED_EVAL_RUNS_SCHEMA = [
@@ -108,6 +129,18 @@ def ensure_schema(db_path: str | Path) -> None:
         for col_name, col_def in _W4_NEW_COLUMNS:
             if col_name not in existing:
                 conn.execute(f"ALTER TABLE answers ADD COLUMN {col_name} {col_def}")
+        telemetry_columns = {
+            row[1] for row in conn.execute("PRAGMA table_info(eval_call_telemetry)")
+        }
+        for column, definition in (
+            ("expected_sources_json", "TEXT"),
+            ("retrieved_sources_json", "TEXT"),
+            ("retrieval_hit", "INTEGER"),
+        ):
+            if column not in telemetry_columns:
+                conn.execute(
+                    f"ALTER TABLE eval_call_telemetry ADD COLUMN {column} {definition}"
+                )
         conn.commit()
     finally:
         conn.close()
@@ -218,6 +251,49 @@ def write_eval_run(
         ),
     )
     return cur.lastrowid
+
+
+def write_eval_telemetry(
+    conn: sqlite3.Connection,
+    *,
+    eval_run_id: int,
+    candidate: dict,
+    judge: dict,
+) -> None:
+    """Persist candidate and judge call metrics separately from rubric scores."""
+    conn.execute(
+        """
+        INSERT INTO eval_call_telemetry (
+            eval_run_id, candidate_model, candidate_cost_usd,
+            candidate_latency_ms, candidate_prompt_tokens,
+            candidate_completion_tokens, candidate_embedding_tokens,
+            judge_model, judge_cost_usd, judge_latency_ms,
+            judge_prompt_tokens, judge_completion_tokens,
+            expected_sources_json, retrieved_sources_json, retrieval_hit
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            eval_run_id,
+            candidate.get("model"),
+            candidate.get("cost_usd"),
+            candidate.get("latency_ms"),
+            candidate.get("prompt_tokens"),
+            candidate.get("completion_tokens"),
+            candidate.get("embedding_tokens"),
+            judge["model"],
+            judge.get("cost_usd"),
+            judge.get("latency_ms"),
+            judge.get("prompt_tokens"),
+            judge.get("completion_tokens"),
+            json.dumps(candidate.get("expected_sources", [])),
+            json.dumps(candidate.get("sources", [])),
+            (
+                int(candidate["retrieval_hit"])
+                if candidate.get("retrieval_hit") is not None
+                else None
+            ),
+        ),
+    )
 
 
 def query_results(conn: sqlite3.Connection, model: str | None = None) -> list[dict]:
