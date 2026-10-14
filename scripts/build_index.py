@@ -1,15 +1,15 @@
 """Build the RAG index. Run once, or whenever the corpus changes."""
 
-from pathlib import Path
 import sys
+from pathlib import Path
 
-ROOT_DIR = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT_DIR))
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.rag.naive_rag import load_corpus, build_index, save_index
 
-CORPUS_DIR = ROOT_DIR / "data/corpus"
-INDEX_PATH = ROOT_DIR / "data/embeddings.json"
+CORPUS_DIR = PROJECT_ROOT / "data" / "corpus"
+INDEX_PATH = PROJECT_ROOT / "data" / "embeddings.json"
 
 print(f"Loading corpus from {CORPUS_DIR}...")
 chunks = load_corpus(CORPUS_DIR)

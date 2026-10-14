@@ -8,10 +8,10 @@
 
 | Metric | W6 baseline | Target for W7 |
 |---|---|---|
-| Cost per query (USD) | $0.000XXX | ↓ (embed cache) |
+| Cost per query (USD) | $0.0008263375| ↓ (embed cache) |
 | Latency p50 (ms) | XXX | ↓ (vector DB, no full scan) |
-| Retrieval hit rate | XX% | ↑ (structure-aware chunking) |
-| Grounded response rate | XX% | ↑ (better retrieval) |
+| Retrieval hit rate | 0 | ↑ (structure-aware chunking) |
+| Grounded response rate | **2.95** / 4| ↑ (better retrieval) |
 | Hallucination rate | XX% | ↓ (better retrieval) |
 
 ## Method

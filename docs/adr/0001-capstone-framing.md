@@ -91,7 +91,7 @@ out-of-scope requests.
 top-3 chunks from `data/corpus/` before generating.
 
 **Baseline KPIs** (see docs/kpi/wk6-snapshot.md):
-- Cost/query: $0.000XXX
+- Cost/query: $0.0001251
 - Latency p50: XXX ms
 - Grounded response rate: XX%
 
@@ -148,3 +148,38 @@ Source: `docs/eval-run-001.md`. These are judge scores, not percentages of answe
 | Date | Change |
 |---|---|
 | 2026-10-04 | Added M1 model and evaluation decisions, three sponsor KPI baselines and W12 targets, the W5 evaluation aggregate, three open questions, and the reserved DR #1 defence section. |
+
+
+## W7 — Qdrant-backed vector store
+
+**Decision:** Use embedding-based retrieval backed by Qdrant Cloud (free tier)
+for the W7 RAG path; retain `naive_rag.py` as the W6 reference implementation.
+
+**Evaluation finding:** On the same 20-question golden set, eval-run-006-W7
+reported accuracy improving from 2.85/4 in eval-run-005 to 3.1/4 (+0.25),
+groundedness from 2.85/4 to 3.1/4 (+0.25 reported), and format from 3.2/4 to
+3.3/4 (+0.1 reported). The per-question rows in eval-run-005 instead yield
+groundedness 2.90/4 and format 3.25/4, making the row-derived gains +0.20 and
++0.05 respectively. Accuracy gains are concentrated in g007 and g012 (2 to 4
+each) and g020 (1 to 2); g006 and g008 remain weak at 1/4 for accuracy and
+groundedness. Treat this as a positive run-to-run result, not proof that Qdrant
+alone caused the improvement, because the reports do not confirm every other
+run condition was held constant.
+
+**Vector stack:**
+- Embedding model: text-embedding-3-small (1536 dims, $0.02 per 1M tokens)
+- Vector store: Qdrant Cloud
+- Distance metric: cosine (programme default; see W7 Track A Day 2 for why)
+- Index: HNSW with defaults (m=16, ef_construct=100)
+
+**Rejected alternatives:**
+- text-embedding-3-large — 6.5× cost, insufficient quality gain on our corpus (see Lab Step 2)
+- FAISS — no service layer; we need persistence + REST
+- Chroma — smaller ecosystem, less battle-tested
+- pgvector — no existing Postgres; not worth adding
+
+**Operational KPIs** (see docs/kpi/wk7-snapshot.md):
+- Persistence: Qdrant-managed (was: JSON file on disk)
+- Restart cost: O(1) — no re-load of vectors into memory
+- Ready for W8 metadata filtering
+- Evaluation: see `docs/eval-run-006-W7.md` for the comparison and remaining low-scoring questions
