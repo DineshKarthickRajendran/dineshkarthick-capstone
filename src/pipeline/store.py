@@ -60,6 +60,8 @@ CREATE TABLE IF NOT EXISTS eval_call_telemetry (
     expected_sources_json TEXT,
     retrieved_sources_json TEXT,
     retrieval_hit INTEGER,
+    complete_source_hit INTEGER,
+    source_coverage REAL,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (eval_run_id) REFERENCES eval_runs(id) ON DELETE CASCADE
 );
@@ -136,6 +138,8 @@ def ensure_schema(db_path: str | Path) -> None:
             ("expected_sources_json", "TEXT"),
             ("retrieved_sources_json", "TEXT"),
             ("retrieval_hit", "INTEGER"),
+            ("complete_source_hit", "INTEGER"),
+            ("source_coverage", "REAL"),
         ):
             if column not in telemetry_columns:
                 conn.execute(
@@ -269,8 +273,9 @@ def write_eval_telemetry(
             candidate_completion_tokens, candidate_embedding_tokens,
             judge_model, judge_cost_usd, judge_latency_ms,
             judge_prompt_tokens, judge_completion_tokens,
-            expected_sources_json, retrieved_sources_json, retrieval_hit
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            expected_sources_json, retrieved_sources_json, retrieval_hit,
+            complete_source_hit, source_coverage
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             eval_run_id,
@@ -292,6 +297,12 @@ def write_eval_telemetry(
                 if candidate.get("retrieval_hit") is not None
                 else None
             ),
+            (
+                int(candidate["complete_source_hit"])
+                if candidate.get("complete_source_hit") is not None
+                else None
+            ),
+            candidate.get("source_coverage"),
         ),
     )
 

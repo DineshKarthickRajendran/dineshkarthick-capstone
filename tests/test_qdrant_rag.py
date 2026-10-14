@@ -2,7 +2,16 @@ from types import SimpleNamespace
 
 from src.pipeline.cost import compute_cost_usd
 from src.rag import qdrant_rag
-from src.rag.qdrant_store import QdrantStore
+from src.rag.qdrant_store import (
+    DEFAULT_EMBEDDING_MODEL,
+    EMBEDDING_MODEL,
+    QdrantStore,
+)
+
+
+def test_qdrant_embedding_defaults_to_small():
+    assert DEFAULT_EMBEDDING_MODEL == "text-embedding-3-small"
+    assert EMBEDDING_MODEL == qdrant_rag.EMBED_MODEL
 
 
 def test_ask_rag_reports_chat_and_embedding_cost(monkeypatch):

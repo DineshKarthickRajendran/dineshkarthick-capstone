@@ -13,7 +13,12 @@ from openai import OpenAI
 from qdrant_client.models import Distance, VectorParams
 
 from src.rag.naive_rag import load_corpus
-from src.rag.qdrant_store import EMBEDDING_DIMS, load_store, upsert_chunks
+from src.rag.qdrant_store import (
+    DEFAULT_EMBEDDING_MODEL,
+    EMBEDDING_DIMS,
+    load_store,
+    upsert_chunks,
+)
 
 EMBEDDING_COST_PER_MILLION = {
     "text-embedding-3-small": 0.02,
@@ -23,7 +28,11 @@ EMBEDDING_COST_PER_MILLION = {
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--embedding-model", choices=EMBEDDING_DIMS, required=True)
+    parser.add_argument(
+        "--embedding-model",
+        choices=EMBEDDING_DIMS,
+        default=DEFAULT_EMBEDDING_MODEL,
+    )
     parser.add_argument("--collection", required=True)
     parser.add_argument("--batch-size", type=int, default=64)
     return parser.parse_args(argv)

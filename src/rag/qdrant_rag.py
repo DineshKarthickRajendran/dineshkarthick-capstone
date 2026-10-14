@@ -6,17 +6,16 @@ Storage layer swapped from JSON+numpy to Qdrant.
 
 from __future__ import annotations
 
-import os
 from typing import Any
 
 from openai import OpenAI
 
 from src.pipeline.cost import compute_cost_usd
 from src.pipeline.settings import Settings
-from src.rag.qdrant_store import QdrantStore, load_store
+from src.rag.qdrant_store import EMBEDDING_MODEL, QdrantStore, load_store
 
 CHAT_MODEL = "gpt-4o-mini"
-EMBED_MODEL = os.environ.get("EMBEDDING_MODEL", "text-embedding-3-small")
+EMBED_MODEL = EMBEDDING_MODEL
 EMBEDDING_COST_PER_MILLION = {
     "text-embedding-3-small": 0.02,
     "text-embedding-3-large": 0.13,

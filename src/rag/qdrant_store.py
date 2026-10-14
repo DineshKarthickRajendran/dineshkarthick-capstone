@@ -21,11 +21,12 @@ from qdrant_client.models import (
 
 load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
+DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"
 EMBEDDING_DIMS = {
     "text-embedding-3-small": 1536,
     "text-embedding-3-large": 3072,
 }
-EMBEDDING_MODEL = os.environ.get("EMBEDDING_MODEL", "text-embedding-3-small")
+EMBEDDING_MODEL = os.environ.get("EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL)
 COLLECTION_NAME = os.environ.get("QDRANT_COLLECTION", "capstone_chunks")
 EMBEDDING_DIM = EMBEDDING_DIMS.get(EMBEDDING_MODEL, 1536)
 

@@ -67,6 +67,16 @@ def source_document_id(source: str) -> str:
     return source.partition("#")[0]
 
 
+def retrieval_source_metrics(
+    expected_sources: set[str], retrieved_sources: set[str]
+) -> tuple[bool | None, bool | None, float | None]:
+    """Return any-source hit, complete-source hit, and expected-source coverage."""
+    if not expected_sources:
+        return None, None, None
+    found = expected_sources & retrieved_sources
+    return bool(found), found == expected_sources, len(found) / len(expected_sources)
+
+
 def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
     golden = load_golden(args.golden_set)
@@ -97,7 +107,7 @@ def main(argv: list[str] | None = None) -> None:
     rows, accs, grds, fmts = [], [], [], []
     candidate_costs, candidate_latencies = [], []
     judge_costs, judge_latencies = [], []
-    retrieval_hits = []
+    retrieval_hits, complete_source_hits, source_coverages = [], [], []
     with store.connect(db_path) as con:
         for g in golden:
             candidate_metrics = get_candidate(g.question, args.api_url)
@@ -107,8 +117,13 @@ def main(argv: list[str] | None = None) -> None:
                 source_document_id(source) for source in candidate_metrics["sources"]
             }
             candidate_metrics["expected_sources"] = sorted(expected_sources)
-            candidate_metrics["retrieval_hit"] = (
-                bool(expected_sources & retrieved_sources) if expected_sources else None
+            (
+                candidate_metrics["retrieval_hit"],
+                candidate_metrics["complete_source_hit"],
+                candidate_metrics["source_coverage"],
+            ) = retrieval_source_metrics(
+                expected_sources,
+                retrieved_sources,
             )
             judge_started = time.perf_counter()
             s, judge_metrics = judge_with_telemetry(
@@ -147,9 +162,12 @@ def main(argv: list[str] | None = None) -> None:
             judge_latencies.append(judge_metrics["latency_ms"])
             if candidate_metrics["retrieval_hit"] is not None:
                 retrieval_hits.append(candidate_metrics["retrieval_hit"])
+                complete_source_hits.append(candidate_metrics["complete_source_hit"])
+                source_coverages.append(candidate_metrics["source_coverage"])
             print(
                 f"{g.id}: acc={s['accuracy']} grnd={s['groundedness']} fmt={s['format']}  "
                 f"hit@3={candidate_metrics['retrieval_hit']} "
+                f"all_sources={candidate_metrics['complete_source_hit']} "
                 f"cand_cost={candidate_metrics['cost_usd']} "
                 f"cand_ms={candidate_metrics['latency_ms']:.1f} "
                 f"judge_cost={judge_metrics['cost_usd']} "
@@ -166,6 +184,17 @@ def main(argv: list[str] | None = None) -> None:
         if retrieval_hits
         else "not measured"
     )
+    complete_source_rate = (
+        f"{sum(complete_source_hits)}/{len(complete_source_hits)} "
+        f"({statistics.mean(complete_source_hits) * 100:.1f}%)"
+        if complete_source_hits
+        else "not measured"
+    )
+    mean_source_coverage = (
+        f"{statistics.mean(source_coverages) * 100:.1f}%"
+        if source_coverages
+        else "not measured"
+    )
     fmt_cost = lambda value: f"${value:.8f}" if value is not None else "not measured"
     fmt_ms = lambda value: f"{value:.1f} ms" if value is not None else "not measured"
     lines = [
@@ -176,6 +205,8 @@ def main(argv: list[str] | None = None) -> None:
         f"- avg groundedness: **{avg(grds)}** / 4",
         f"- avg format:       **{avg(fmts)}** / 4",
         f"- retrieval hit@3:  **{retrieval_rate}**",
+        f"- complete-source hit@3: **{complete_source_rate}**",
+        f"- expected-source coverage@3: **{mean_source_coverage}**",
         "",
         "## Cost and latency",
         "",
@@ -186,8 +217,8 @@ def main(argv: list[str] | None = None) -> None:
         f"- Judge cost total / average: {fmt_cost(sum(judge_costs) if judge_costs else None)} / {fmt_cost(avg_cost(judge_costs))} ({len(judge_costs)}/{n} measured)",
         f"- Judge latency median (p50): {fmt_ms(median_ms(judge_latencies))}",
         "",
-        "| id | hit@3 | acc | grnd | fmt | retrieved sources | candidate cost | candidate ms | judge cost | judge ms | candidate |",
-        "|----|:-----:|-----|------|-----|-------------------|---------------:|-------------:|-----------:|---------:|-----------|",
+        "| id | any hit | all sources | coverage | acc | grnd | fmt | retrieved sources | candidate cost | candidate ms | judge cost | judge ms | candidate |",
+        "|----|:-------:|:-----------:|:--------:|-----|------|-----|-------------------|---------------:|-------------:|-----------:|---------:|-----------|",
     ]
     for gid, cand, s, candidate_metrics, judge_metrics in rows:
         c = cand.replace("|", "/")[:70]
@@ -196,8 +227,18 @@ def main(argv: list[str] | None = None) -> None:
             if candidate_metrics["retrieval_hit"] is True
             else "no" if candidate_metrics["retrieval_hit"] is False else "n/a"
         )
+        complete_hit_label = (
+            "yes"
+            if candidate_metrics["complete_source_hit"] is True
+            else "no" if candidate_metrics["complete_source_hit"] is False else "n/a"
+        )
+        source_coverage_label = (
+            f"{candidate_metrics['source_coverage'] * 100:.0f}%"
+            if candidate_metrics["source_coverage"] is not None
+            else "n/a"
+        )
         lines.append(
-            f"| {gid} | {hit_label} | "
+            f"| {gid} | {hit_label} | {complete_hit_label} | {source_coverage_label} | "
             f"{s['accuracy']} | {s['groundedness']} | {s['format']} | "
             f"{', '.join(candidate_metrics['sources'])} | "
             f"{fmt_cost(candidate_metrics['cost_usd'])} | "

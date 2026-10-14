@@ -99,6 +99,8 @@ def test_cli_arguments_reach_evaluation_and_storage(tmp_path, monkeypatch):
     assert "Candidate cost total / average" in report
     assert "candidate ms" in report
     assert "retrieval hit@3:  **1/1 (100.0%)**" in report
+    assert "complete-source hit@3: **1/1 (100.0%)**" in report
+    assert "expected-source coverage@3: **100.0%**" in report
     assert "| g001 | yes |" in report
 
 
@@ -138,3 +140,12 @@ def test_get_candidate_adds_endpoint_to_api_base(monkeypatch):
     assert answer["latency_ms"] >= 0
     assert observed["url"] == "http://localhost:8000/ask_batched"
     assert observed["payload"] == {"question": "Question?"}
+
+
+def test_retrieval_source_metrics_requires_all_expected_documents():
+    assert run_eval.retrieval_source_metrics({"leave", "offboarding"}, {"leave"}) == (
+        True,
+        False,
+        0.5,
+    )
+    assert run_eval.retrieval_source_metrics(set(), {"leave"}) == (None, None, None)
