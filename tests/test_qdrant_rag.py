@@ -61,3 +61,42 @@ def test_ask_rag_reports_chat_and_embedding_cost(monkeypatch):
     assert result["prompt_tokens"] == 10
     assert result["completion_tokens"] == 2
     assert result["embedding_tokens"] == 4
+
+
+def test_retrieve_accepts_w8_ingestion_payload(monkeypatch):
+    monkeypatch.setattr(
+        qdrant_rag,
+        "_embed_query_with_usage",
+        lambda _query: ([0.1, 0.2], 3),
+    )
+    client = SimpleNamespace(
+        query_points=lambda **_kwargs: SimpleNamespace(
+            points=[
+                SimpleNamespace(
+                    payload={
+                        "chunk_id": "01_leave_policy#0",
+                        "source": "01_leave_policy.md",
+                        "section_path": "01_leave_policy",
+                        "text": "Leave policy text",
+                        "pii_flags_count": 0,
+                    },
+                    score=0.8,
+                )
+            ]
+        )
+    )
+    usage = {}
+
+    hits = qdrant_rag.retrieve(
+        QdrantStore(client, "capstone_chunks_v2"), "leave?", usage=usage
+    )
+
+    assert hits == [
+        {
+            "chunk_id": "01_leave_policy#0",
+            "source_id": "01_leave_policy",
+            "text": "Leave policy text",
+            "score": 0.8,
+        }
+    ]
+    assert usage["embedding_tokens"] == 3

@@ -6,16 +6,28 @@ Storage layer swapped from JSON+numpy to Qdrant.
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
 from typing import Any
 
 from openai import OpenAI
 
 from src.pipeline.cost import compute_cost_usd
 from src.pipeline.settings import Settings
-from src.rag.qdrant_store import EMBEDDING_MODEL, QdrantStore, load_store
+from src.rag.qdrant_store import QdrantStore
+
+from src.rag.qdrant_store import _get_client
+
+
+def load_store():
+    """Load a store pointing at the v2 collection."""
+    from src.rag.qdrant_store import QdrantStore
+
+    return QdrantStore(client=_get_client(), collection="capstone_chunks_v2")
+
 
 CHAT_MODEL = "gpt-4o-mini"
-EMBED_MODEL = EMBEDDING_MODEL
+EMBED_MODEL = os.environ.get("EMBEDDING_MODEL", "text-embedding-3-small")
 EMBEDDING_COST_PER_MILLION = {
     "text-embedding-3-small": 0.02,
     "text-embedding-3-large": 0.13,
@@ -58,15 +70,23 @@ def retrieve(
         query=q_vec,
         limit=k,
     ).points
-    return [
-        {
-            "chunk_id": h.payload["chunk_id"],
-            "source_id": h.payload["source_id"],
-            "text": h.payload["text"],
-            "score": h.score,
-        }
-        for h in results
-    ]
+    hits = []
+    for hit in results:
+        payload = hit.payload or {}
+        source_id = (
+            payload.get("source_id")
+            or payload.get("section_path")
+            or Path(payload["source"]).stem
+        )
+        hits.append(
+            {
+                "chunk_id": payload["chunk_id"],
+                "source_id": source_id,
+                "text": payload["text"],
+                "score": hit.score,
+            }
+        )
+    return hits
 
 
 SYSTEM = (

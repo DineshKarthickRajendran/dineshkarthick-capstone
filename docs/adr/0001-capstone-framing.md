@@ -201,3 +201,75 @@ targeted option if its judge-score advantage is valuable for quality-critical
 queries. This is a limited 20-question result, not a universal model ranking;
 the small-versus-large run details and hit@3 definition are in
 `docs/kpi/w7-comparions.md`.
+
+## W8 — Structure-aware ingestion + PII discipline
+
+**Decision:** Capstone corpus is now ingested via `src/ingest/pipeline.py`,
+which parses by extension, chunks recursively (structure-aware where possible),
+scrubs PII with regex + Presidio, enriches with the 11-field metadata schema,
+and upserts to `capstone_chunks_v2`.
+
+**Ingestion pipeline steps:**
+1. Parse (PyMuPDF for PDF, BeautifulSoup for HTML, python-docx for DOCX)
+2. Chunk (recursive, max_size=400)
+3. Scrub PII (regex + Presidio + audit)
+4. Enrich metadata (11 fields: chunk_id, source, doc_type, section_path, page,
+   date, language, version, ingested_at, text, pii_flags_count)
+5. Embed (text-embedding-3-small)
+6. Upsert (Qdrant collection capstone_chunks_v2)
+
+**PII detection:** hybrid regex + Presidio. Regex targets EMAIL, PHONE, and
+EMP_ID; Presidio targets PERSON, LOCATION, and ORGANIZATION. The W8 collection
+contains 800 chunks from 20 documents. The audit recorded 74 detector flags
+across 59 chunks (7.4% of chunks flagged). These are review signals, not
+independently verified PII items or a measured false-positive rate. The supplied
+10-chunk scroll was the first page, all from one leave-policy document, not a
+random corpus sample; see `docs/wk8-pii-audit.md`.
+
+**Evaluation finding:** The same 20 standard golden questions were run against
+W7 `capstone_chunks` (`eval-run-008-small-embedding-20261014`) and W8
+`capstone_chunks_v2` (`eval-run-w8-chunks-20261017-final`). W8 retained the same
+retrieval rates: 20/20 any-source hit@3 (100%), 17/20 complete-source hit@3
+(85%), and 91.2% mean expected-source coverage. However, mean accuracy decreased
+from 2.90/4 to 2.30/4 (-0.60), groundedness from 2.90/4 to 2.45/4 (-0.45), and
+format from 3.20/4 to 3.00/4 (-0.20). Candidate cost/query decreased from
+$0.00007675 to $0.00004973 (-35.2%) and candidate latency p50 from 2777.5 ms to
+2652.1 ms (-4.5%). These are run-to-run observations, not a controlled ablation:
+metadata is stored in W8, but the current retrieval query does not yet apply
+metadata filters. Retrieval hit rate did not improve, and retrieving expected
+sources did not guarantee a correct, grounded answer. Detailed results are in
+`docs/eval-run-w8-chunks-20261017-final.md` and `docs/kpi/wk8-snapshot.md`.
+
+**Known gaps:** The PII flags have not been manually adjudicated; detector recall
+and false-positive rate are unknown. The sample scroll is not representative.
+The current top-k retrieval does not filter on metadata. The standard 20-question
+evaluation is small, and W8 judge scores declined despite unchanged source-hit
+metrics; broaden evaluation and inspect low-scoring answers before attributing
+results to recursive chunking or PII scrubbing.
+
+**Data residency:**
+- Embeddings computed by: OpenAI API (US)
+- Vectors stored at: Qdrant Cloud, AWS `eu-west-1` (based on configured endpoint)
+- LLM inference at: OpenAI API; processing region not independently verified
+- App layer: local demo/API for this evaluation; production hosting not selected
+- Cross-jurisdictional flows: corpus text is sent to OpenAI for embeddings and
+  generation; vectors are stored in Qdrant Cloud `eu-west-1`. Confirm provider
+  processing, retention, and residency terms before using real employee data.
+
+**Rejected alternatives:**
+- Structure-aware chunking on all doc types — DOCX supports it well;
+  PDFs would need custom logic per document; not worth it for MVP.
+- Semantic chunking as default — cost-prohibitive at corpus scale.
+- Presidio only (no regex) — slower; misses obvious patterns Presidio
+  weights lower.
+
+**Operational KPIs** (see docs/kpi/wk8-snapshot.md):
+- Collection: 800 points, cosine, 1536-dimensional `text-embedding-3-small` vectors
+- Payload: 11 fields per chunk; metadata filtering is possible from stored fields
+  but is not yet enabled in the retrieval query
+- PII detector: 74 flags across 59 chunks; manual adjudication remains open
+- Evaluation: any-source hit@3 100%, complete-source hit@3 85%, source coverage
+  91.2%; mean accuracy 2.30/4, groundedness 2.45/4, format 3.00/4
+- Candidate cost/query $0.00004973 average; candidate p50 latency 2652.1 ms
+- Compared with W7, retrieval metrics were unchanged, judge scores declined, and
+  cost and latency were lower; this run does not isolate causality

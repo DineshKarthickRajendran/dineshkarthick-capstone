@@ -88,22 +88,77 @@ def upsert_chunks(
     Each chunk is a dict with 'chunk_id', 'source_id', and 'text' keys
     (matches the shape produced by W6's naive_rag.load_corpus).
     """
+
     points = [
         PointStruct(
             id=idx,
             vector=vec,
+            # payload={
+            #     "chunk_id": chunk["chunk_id"],
+            #     "source_id": chunk["source_id"],
+            #     "text": chunk["text"],
+            # },
             payload={
-                "chunk_id": chunk["chunk_id"],
-                "source_id": chunk["source_id"],
-                "text": chunk["text"],
-            },
+                k: v for k, v in chunk.items() if k != "vector"
+            },  # Added in W8 richer payload
         )
         for idx, (chunk, vec) in enumerate(zip(chunks, vectors))
     ]
     store.client.upsert(collection_name=store.collection, points=points)
 
 
+# def upsert_chunks(
+#     store: QdrantStore, chunks: list[dict], vectors: list[list[float]]
+# ) -> None:
+#     """Push (chunk, vector) pairs into the store.
+
+#     Accept both W6's {chunk_id, source_id, text} shape and the ingestion
+#     pipeline's enriched metadata shape, where section_path identifies source.
+#     """
+#     points = []
+#     for idx, (chunk, vec) in enumerate(zip(chunks, vectors)):
+#         source_id = chunk.get("source_id") or chunk.get("section_path")
+#         if not source_id:
+#             raise ValueError(
+#                 f"Chunk {chunk.get('chunk_id', idx)!r} is missing source_id "
+#                 "and section_path metadata"
+#             )
+#         points.append(
+#             PointStruct(
+#                 id=idx,
+#                 vector=vec,
+#                 payload={
+#                     "chunk_id": chunk["chunk_id"],
+#                     "source_id": source_id,
+#                     "text": chunk["text"],
+#                 },
+#             )
+#         )
+#     store.client.upsert(collection_name=store.collection, points=points)
+
+
 def collection_size(store: QdrantStore) -> int:
     """Return the number of points in the collection. Used for smoke tests."""
     info = store.client.get_collection(store.collection)
     return info.points_count
+
+
+"""You already have qdrant_store.py from W7. It handles capstone_chunks. 
+For W8, you need it to also handle capstone_chunks_v2 with the enriched payload."""
+
+
+def upsert_chunks_v2(
+    store: QdrantStore, chunks: list[dict], vectors: list[list[float]]
+) -> None:
+    """Upsert with the full 9-field metadata payload from W8's pipeline.
+
+    chunks[i] is a dict with keys: chunk_id, source, doc_type, section_path,
+    page, date, language, version, ingested_at, text, pii_flags_count.
+    """
+    from qdrant_client.models import PointStruct
+
+    points = [
+        PointStruct(id=idx, vector=vec, payload=chunk)
+        for idx, (chunk, vec) in enumerate(zip(chunks, vectors))
+    ]
+    store.client.upsert(collection_name=store.collection, points=points)
