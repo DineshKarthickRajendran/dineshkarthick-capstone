@@ -86,6 +86,7 @@ def judge_with_telemetry(question, ideal, candidate, must_mention, model=None):
         }
     from openai import OpenAI
 
+    print("openai_api_key -judge", os.environ["OPENAI_API_KEY"])
     client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
     resp = client.chat.completions.create(
         model=selected_model,

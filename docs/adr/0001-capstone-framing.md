@@ -273,3 +273,45 @@ results to recursive chunking or PII scrubbing.
 - Candidate cost/query $0.00004973 average; candidate p50 latency 2652.1 ms
 - Compared with W7, retrieval metrics were unchanged, judge scores declined, and
   cost and latency were lower; this run does not isolate causality
+
+## W9 — Hybrid retrieval + cross-encoder reranking
+
+**Decision:** Capstone retrieval upgrades from pure dense to hybrid+rerank.
+
+**Retrieval stack:**
+- BM25 library: rank-bm25 (BM25Okapi)
+- Tokenization: lowercase + alphanumeric-with-hyphens-and-slashes (preserves 'AC-1042', '/v2/dashboards')
+- Dense model: text-embedding-3-small (1536 dim, unchanged from W7)
+- Fusion: RRF with k=60 (Cormack 2009 default)
+- Reranker: cross-encoder/ms-marco-MiniLM-L-6-v2 (local CPU, ~80MB)
+- Rerank input: top-10 from hybrid retrieve
+- Rerank output: top-3 final
+
+**Rejected alternatives:**
+- Cohere Rerank API — paid ($1/1000 reranks), no meaningful accuracy lift on our corpus vs local cross-encoder
+- Weighted score fusion (instead of RRF) — requires per-corpus weight tuning; RRF is tuning-free
+- Larger cross-encoder (ms-marco-MiniLM-L-12-v2, ~120MB) — 2× slower for negligible accuracy lift on English enterprise docs
+- LlamaIndex framework — retrieval fits comfortably in ~140 LOC; framework overhead not justified yet (revisit at W12+)
+
+**Operational KPIs** (see docs/kpi/wk9-snapshot.md):
+- W9 evaluation: 20 questions via the active `src.api.main` `/ask_w9` endpoint
+  and `data/golden_set_w9.jsonl`
+- Any expected-source hit@3: 20/20 (100%); complete-source hit@3: 18/20 (90%);
+  expected-source coverage@3: 95.0%
+- Mean judge scores: accuracy 2.50/4, groundedness 2.55/4, format 3.00/4;
+  8/20 answers scored at least 3/4 on groundedness
+- Candidate cost/query: $0.00005168 average; candidate p50 latency: 2797.2 ms
+- W8 comparison: any-source hit@3 unchanged at 100%; complete-source hit@3
+  improved from 85% to 90%, coverage from 91.2% to 95.0%, accuracy from 2.30
+  to 2.50, and groundedness from 2.45 to 2.55. Format remained 3.00. Candidate
+  cost rose by $0.00000195/query and p50 latency by 145.1 ms.
+- This is a 20-question observational comparison, not an ablation. Source-level
+  hit@3 does not establish passage-level precision; precision@5 remains
+  unmeasured. See `docs/kpi/wk9-snapshot.md` for definitions and caveats.
+
+**Known gaps to revisit:**
+- BM25 index rebuilt from Qdrant scroll at process start (~2s for 300 chunks). For larger corpora, persist to disk (W10 caching topic).
+- Cross-encoder is CPU-bound; consider GPU or batch reranking if query volume grows.
+- Some answers abstained despite retrieving the expected source; improve
+  passage-level relevance evaluation and inspect low-scoring questions before
+  attributing answer-score changes to the retrieval upgrade.

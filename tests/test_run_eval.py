@@ -1,8 +1,10 @@
+import os
 import sqlite3
 from types import SimpleNamespace
 
 from scripts import run_eval
 from src.eval.golden import GoldenEntry
+from src.pipeline.openai_config import configure_openai_base_url
 
 
 def test_cli_arguments_reach_evaluation_and_storage(tmp_path, monkeypatch):
@@ -25,8 +27,8 @@ def test_cli_arguments_reach_evaluation_and_storage(tmp_path, monkeypatch):
         lambda path: observed.update(golden_path=path) or [entry],
     )
 
-    def fake_get_candidate(question, api_url):
-        observed.update(question=question, api_url=api_url)
+    def fake_get_candidate(question, api_url, endpoint):
+        observed.update(question=question, api_url=api_url, endpoint=endpoint)
         return {
             "content": "Use the approved policy.",
             "sources": ["policy#chunk-0"],
@@ -66,6 +68,8 @@ def test_cli_arguments_reach_evaluation_and_storage(tmp_path, monkeypatch):
             str(db_path),
             "--api-url",
             "http://localhost:8000",
+            "--endpoint",
+            "/ask_w9",
             "--judge-model",
             "gpt-4o-mini",
             "--label",
@@ -77,6 +81,7 @@ def test_cli_arguments_reach_evaluation_and_storage(tmp_path, monkeypatch):
         "golden_path": golden_path,
         "question": entry.question,
         "api_url": "http://localhost:8000",
+        "endpoint": "/ask_w9",
         "judge_model": "gpt-4o-mini",
     }
     with sqlite3.connect(db_path) as conn:
@@ -142,10 +147,46 @@ def test_get_candidate_adds_endpoint_to_api_base(monkeypatch):
     assert observed["payload"] == {"question": "Question?"}
 
 
+def test_get_candidate_uses_selected_endpoint(monkeypatch):
+    observed = {}
+
+    class Response:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"content": "answer", "sources": ["policy"]}
+
+    def fake_post(url, *, json, timeout):
+        observed["url"] = url
+        return Response()
+
+    monkeypatch.setattr(run_eval.httpx, "post", fake_post)
+
+    run_eval.get_candidate(
+        "Question?", "http://localhost:8000", endpoint="/ask_w9"
+    )
+
+    assert observed["url"] == "http://localhost:8000/ask_w9"
+
+
 def test_retrieval_source_metrics_requires_all_expected_documents():
     assert run_eval.retrieval_source_metrics({"leave", "offboarding"}, {"leave"}) == (
         True,
         False,
         0.5,
     )
+    assert run_eval.retrieval_source_metrics({"leave"}, None) == (
+        None,
+        None,
+        None,
+    )
     assert run_eval.retrieval_source_metrics(set(), {"leave"}) == (None, None, None)
+
+
+def test_openai_api_base_alias_is_supported(monkeypatch):
+    monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
+    monkeypatch.setenv("OPENAI_API_BASE", "https://openai.vocareum.com/v1")
+
+    assert configure_openai_base_url() == "https://openai.vocareum.com/v1"
+    assert os.environ["OPENAI_BASE_URL"] == "https://openai.vocareum.com/v1"

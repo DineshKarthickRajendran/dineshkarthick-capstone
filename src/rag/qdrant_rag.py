@@ -14,16 +14,14 @@ from openai import OpenAI
 
 from src.pipeline.cost import compute_cost_usd
 from src.pipeline.settings import Settings
-from src.rag.qdrant_store import QdrantStore
+from src.rag.qdrant_store import QdrantStore, W9_COLLECTION_NAME, _get_client
 
-from src.rag.qdrant_store import _get_client
+from src.rag.retrieval import retrieve as retrieve_v9  # Week9
 
 
 def load_store():
     """Load a store pointing at the v2 collection."""
-    from src.rag.qdrant_store import QdrantStore
-
-    return QdrantStore(client=_get_client(), collection="capstone_chunks_v2")
+    return QdrantStore(client=_get_client(), collection=W9_COLLECTION_NAME)
 
 
 CHAT_MODEL = "gpt-4o-mini"
@@ -107,11 +105,19 @@ def ask_rag(
         store = load_store()
 
     usage: dict[str, int] = {}
-    retrieved = retrieve(store, question, k=k, usage=usage)
+    # retrieved = retrieve(store, question, k=k, usage=usage) # OLD (W8)
+
+    retrieved = retrieve_v9(
+        question,
+        k=k,
+        usage=usage,
+        collection_name=store.collection,
+    )
+    retrieved_docs = [hit["doc"] for hit in retrieved]
 
     context = "\n\n".join(
-        f"[{hit['chunk_id']}] (source: {hit['source_id']})\n{hit['text']}"
-        for hit in retrieved
+        f"[{doc['chunk_id']}] (source: {doc['source_id']})\n{doc['text']}"
+        for doc in retrieved_docs
     )
 
     resp = _openai().chat.completions.create(
@@ -138,8 +144,8 @@ def ask_rag(
 
     return {
         "answer": resp.choices[0].message.content,
-        "sources": [h["source_id"] for h in retrieved],
-        "chunk_ids": [h["chunk_id"] for h in retrieved],
+        "sources": [doc["source_id"] for doc in retrieved_docs],
+        "chunk_ids": [doc["chunk_id"] for doc in retrieved_docs],
         "candidate_model": CHAT_MODEL,
         "prompt_tokens": prompt_tokens,
         "completion_tokens": completion_tokens,

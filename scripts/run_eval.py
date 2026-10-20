@@ -4,7 +4,7 @@ Flow:  load golden set -> POST each question to /ask_batched -> judge the answer
 against the ideal -> persist to eval_runs -> write docs/eval-run-001.md.
 
 Prereqs:
-  * the API running:   uvicorn api.main:app --port 8000
+  * the API running:   uvicorn src.api.main:app --port 8000
   * OPENAI_API_KEY set (real judge = gpt-4o), OR run offline: USE_FAKE=1 python scripts/run_eval.py
 
 Usage:  python scripts/run_eval.py
@@ -20,11 +20,16 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from dotenv import load_dotenv
 import httpx
 
 from src.eval.golden import load_golden
 from src.eval.judge import judge_with_telemetry
+from src.pipeline.openai_config import configure_openai_base_url
 from src.pipeline import store
+
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+configure_openai_base_url()
 
 DEFAULT_API_URL = "http://localhost:8000"
 
@@ -36,23 +41,33 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--golden-set", default="data/golden_set.jsonl")
     parser.add_argument("--db", default="data/answers.db")
     parser.add_argument("--api-url", default=DEFAULT_API_URL)
+    parser.add_argument(
+        "--endpoint",
+        default="/ask_batched",
+        help="API path to evaluate (use /ask_w9 for the W9 RAG pipeline)",
+    )
     parser.add_argument("--judge-model", default="gpt-4o")
     parser.add_argument("--label", default="eval-run-004")
     return parser.parse_args(argv)
 
 
-def get_candidate(question: str, api_url: str) -> dict:
+def get_candidate(
+    question: str, api_url: str, endpoint: str = "/ask_batched"
+) -> dict:
     """Ask the running app for an answer."""
-    endpoint = api_url.rstrip("/")
-    if not endpoint.endswith("/ask_batched"):
-        endpoint += "/ask_batched"
+    url = api_url.rstrip("/")
+    endpoint_path = endpoint.strip("/")
+    if not endpoint_path:
+        raise ValueError("API endpoint path must not be empty")
+    if not url.endswith(f"/{endpoint_path}"):
+        url += f"/{endpoint_path}"
     started = time.perf_counter()
-    response = httpx.post(endpoint, json={"question": question}, timeout=60.0)
+    response = httpx.post(url, json={"question": question}, timeout=60.0)
     response.raise_for_status()
     data = response.json()
     return {
         "content": data["content"],
-        "sources": data.get("sources", []),
+        "sources": data.get("sources"),
         "model": data.get("candidate_model"),
         "cost_usd": data.get("cost_usd"),
         "latency_ms": (time.perf_counter() - started) * 1000,
@@ -68,10 +83,10 @@ def source_document_id(source: str) -> str:
 
 
 def retrieval_source_metrics(
-    expected_sources: set[str], retrieved_sources: set[str]
+    expected_sources: set[str], retrieved_sources: set[str] | None
 ) -> tuple[bool | None, bool | None, float | None]:
     """Return any-source hit, complete-source hit, and expected-source coverage."""
-    if not expected_sources:
+    if not expected_sources or retrieved_sources is None:
         return None, None, None
     found = expected_sources & retrieved_sources
     return bool(found), found == expected_sources, len(found) / len(expected_sources)
@@ -110,12 +125,17 @@ def main(argv: list[str] | None = None) -> None:
     retrieval_hits, complete_source_hits, source_coverages = [], [], []
     with store.connect(db_path) as con:
         for g in golden:
-            candidate_metrics = get_candidate(g.question, args.api_url)
+            candidate_metrics = get_candidate(
+                g.question, args.api_url, args.endpoint
+            )
             candidate = candidate_metrics["content"]
             expected_sources = set(g.expected_sources)
-            retrieved_sources = {
-                source_document_id(source) for source in candidate_metrics["sources"]
-            }
+            sources = candidate_metrics["sources"]
+            retrieved_sources = (
+                {source_document_id(source) for source in sources}
+                if sources is not None
+                else None
+            )
             candidate_metrics["expected_sources"] = sorted(expected_sources)
             (
                 candidate_metrics["retrieval_hit"],
@@ -240,7 +260,7 @@ def main(argv: list[str] | None = None) -> None:
         lines.append(
             f"| {gid} | {hit_label} | {complete_hit_label} | {source_coverage_label} | "
             f"{s['accuracy']} | {s['groundedness']} | {s['format']} | "
-            f"{', '.join(candidate_metrics['sources'])} | "
+            f"{', '.join(candidate_metrics['sources']) if candidate_metrics['sources'] is not None else 'not returned'} | "
             f"{fmt_cost(candidate_metrics['cost_usd'])} | "
             f"{fmt_ms(candidate_metrics['latency_ms'])} | "
             f"{fmt_cost(judge_metrics['cost_usd'])} | "

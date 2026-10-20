@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from dotenv import load_dotenv
+from src.pipeline.openai_config import configure_openai_base_url
 from qdrant_client import QdrantClient
 from qdrant_client.models import (
     Distance,
@@ -20,6 +21,7 @@ from qdrant_client.models import (
 )
 
 load_dotenv(Path(__file__).resolve().parents[2] / ".env")
+configure_openai_base_url()
 
 DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"
 EMBEDDING_DIMS = {
@@ -28,6 +30,7 @@ EMBEDDING_DIMS = {
 }
 EMBEDDING_MODEL = os.environ.get("EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL)
 COLLECTION_NAME = os.environ.get("QDRANT_COLLECTION", "capstone_chunks")
+W9_COLLECTION_NAME = "capstone_chunks_v2"
 EMBEDDING_DIM = EMBEDDING_DIMS.get(EMBEDDING_MODEL, 1536)
 
 

@@ -15,6 +15,7 @@ def test_qdrant_embedding_defaults_to_small():
 
 
 def test_ask_rag_reports_chat_and_embedding_cost(monkeypatch):
+    chat_request = {}
     client = SimpleNamespace(
         embeddings=SimpleNamespace(
             create=lambda **_kwargs: SimpleNamespace(
@@ -24,13 +25,18 @@ def test_ask_rag_reports_chat_and_embedding_cost(monkeypatch):
         ),
         chat=SimpleNamespace(
             completions=SimpleNamespace(
-                create=lambda **_kwargs: SimpleNamespace(
-                    choices=[
-                        SimpleNamespace(
-                            message=SimpleNamespace(content="Grounded answer")
-                        )
-                    ],
-                    usage=SimpleNamespace(prompt_tokens=10, completion_tokens=2),
+                create=lambda **kwargs: (
+                    chat_request.update(kwargs)
+                    or SimpleNamespace(
+                        choices=[
+                            SimpleNamespace(
+                                message=SimpleNamespace(content="Grounded answer")
+                            )
+                        ],
+                        usage=SimpleNamespace(
+                            prompt_tokens=10, completion_tokens=2
+                        ),
+                    )
                 )
             )
         ),
@@ -51,6 +57,21 @@ def test_ask_rag_reports_chat_and_embedding_cost(monkeypatch):
     )
     monkeypatch.setattr(qdrant_rag, "_client", client)
 
+    def fake_retrieve_v9(_question, *, k, usage, collection_name):
+        assert collection_name == "policies"
+        usage["embedding_tokens"] = 4
+        return [
+            {
+                "doc": {
+                    "chunk_id": "leave#0",
+                    "source_id": "leave",
+                    "text": "Leave policy text",
+                }
+            }
+        ]
+
+    monkeypatch.setattr(qdrant_rag, "retrieve_v9", fake_retrieve_v9)
+
     result = qdrant_rag.ask_rag(
         "How much leave?", store=QdrantStore(store_client, "policies")
     )
@@ -61,6 +82,11 @@ def test_ask_rag_reports_chat_and_embedding_cost(monkeypatch):
     assert result["prompt_tokens"] == 10
     assert result["completion_tokens"] == 2
     assert result["embedding_tokens"] == 4
+    assert result["sources"] == ["leave"]
+    assert result["chunk_ids"] == ["leave#0"]
+    assert "[leave#0] (source: leave)\nLeave policy text" in chat_request[
+        "messages"
+    ][1]["content"]
 
 
 def test_retrieve_accepts_w8_ingestion_payload(monkeypatch):
@@ -100,3 +126,75 @@ def test_retrieve_accepts_w8_ingestion_payload(monkeypatch):
         }
     ]
     assert usage["embedding_tokens"] == 3
+
+
+def test_w9_dense_search_reports_embedding_usage(monkeypatch):
+    from src.rag import retrieval
+
+    observed = {}
+    monkeypatch.setattr(
+        retrieval,
+        "_get_openai",
+        lambda: SimpleNamespace(
+            embeddings=SimpleNamespace(
+                create=lambda **_kwargs: SimpleNamespace(
+                    data=[SimpleNamespace(embedding=[0.1, 0.2])],
+                    usage=SimpleNamespace(prompt_tokens=7),
+                )
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        retrieval,
+        "_get_client",
+        lambda: SimpleNamespace(
+            query_points=lambda **kwargs: (
+                observed.update(kwargs)
+                or SimpleNamespace(
+                    points=[
+                        SimpleNamespace(
+                            id=1,
+                            score=0.9,
+                            payload={
+                                "chunk_id": "leave#0",
+                                "section_path": "leave",
+                                "text": "Leave policy text",
+                            },
+                        )
+                    ]
+                )
+            )
+        ),
+    )
+    usage = {}
+
+    hits = retrieval.dense_search("leave?", k=1, usage=usage)
+
+    assert hits[0]["doc"]["chunk_id"] == "leave#0"
+    assert hits[0]["doc"]["source_id"] == "leave"
+    assert usage["embedding_tokens"] == 7
+    assert observed["collection_name"] == retrieval.W9_COLLECTION_NAME
+
+
+def test_bm25_search_uses_requested_collection(monkeypatch):
+    from src.rag import retrieval
+
+    observed = {}
+
+    class FakeBM25:
+        def get_scores(self, _query):
+            return [1.0]
+
+    monkeypatch.setattr(
+        retrieval,
+        "_load_bm25",
+        lambda collection_name: (
+            observed.update(collection_name=collection_name) or FakeBM25(),
+            [{"point_id": 7, "chunk_id": "leave#0", "text": "leave policy"}],
+        ),
+    )
+
+    hits = retrieval.bm25_search("leave", collection_name="policies-v9")
+
+    assert hits[0]["doc"]["chunk_id"] == "leave#0"
+    assert observed["collection_name"] == "policies-v9"

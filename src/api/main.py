@@ -44,11 +44,8 @@ async def health() -> dict:
     return {"status": "ok"}
 
 
-@app.post("/ask_batched", response_model=Answer)
-async def ask_batched(q: Question) -> Answer:
-    """Non-streaming structured Answer via tool-calling. Persists to SQLite."""
-    # answer = await ask_llm(q, _settings)  # Commented for W6 RAG based implementation
-    logger.info("ask_batched completed")
+async def _ask_rag(q: Question) -> Answer:
+    """Run W9 RAG and persist its answer for either evaluation endpoint."""
     result = qdrant_rag.ask_rag(q.question, settings=_settings)
     answer = Answer(
         content=result["answer"],
@@ -76,6 +73,20 @@ async def ask_batched(q: Question) -> Answer:
             schema_version=answer.schema_version,
         )
     return answer
+
+
+@app.post("/ask_batched", response_model=Answer)
+async def ask_batched(q: Question) -> Answer:
+    """Non-streaming structured Answer via RAG. Persists to SQLite."""
+    logger.info("ask_batched completed")
+    return await _ask_rag(q)
+
+
+@app.post("/ask_w9", response_model=Answer)
+async def ask_w9(q: Question) -> Answer:
+    """Explicit W9 RAG endpoint for W9 evaluation and source telemetry."""
+    logger.info("ask_w9 completed")
+    return await _ask_rag(q)
 
 
 @app.post("/ask")

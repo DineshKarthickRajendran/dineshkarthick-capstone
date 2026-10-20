@@ -4,6 +4,13 @@ import os
 from pathlib import Path
 from pydantic import BaseModel, Field
 
+from dotenv import load_dotenv
+
+# Load OPENAI_API_KEY from .env if a .env file exists.
+# On Vocareum the key is already set in the environment, so this is a
+# harmless no-op.
+load_dotenv()
+
 
 class Settings(BaseModel):
     """Runtime Cofiguration. Validated at construction"""
