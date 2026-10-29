@@ -315,3 +315,47 @@ results to recursive chunking or PII scrubbing.
 - Some answers abstained despite retrieving the expected source; improve
   passage-level relevance evaluation and inspect low-scoring questions before
   attributing answer-score changes to the retrieval upgrade.
+
+
+## W10 — Caching + KB lifecycle
+
+**Decisions:**
+- **Layer 1 (semantic cache):** SQLite backend (reuse results.db); 0.95 cosine
+  threshold; scan-based lookup (fine for <1K entries; migrate to Qdrant if
+  cache grows > 10K)
+- **Layer 2 (OpenAI prompt cache):** implicit auto-cache on gpt-4o-mini;
+  system prompt placed FIRST for prefix matching
+- **Layer 3 (embedding cache):** already in place from W7
+- **Tombstone semantics:** IsEmptyCondition (not IsNullCondition) — matches
+  absent OR null OR empty; robust to ingestion variations
+- **Update flow:** tombstone old → insert new → clear cache (in that order)
+- **Audit escape hatch:** dense_search(include_deleted=True) for historical
+  evaluations against past KB state
+
+**Rejected alternatives:**
+- LLMLingua prompt compression: precision risk on technical docs; deferred
+  to Stretch — measure groundedness before ever shipping
+- Cohere semantic cache API: paid; local SQLite covers capstone scale
+- Cache-per-source invalidation: complex; blunt clear-on-update is safer
+  default at our scale
+- IsNullCondition for tombstone filter: silent bug when field absent
+  (see W10 Day 2 Cell 4 diagnosis)
+
+**Operational KPIs** (see docs/kpi/wk10-snapshot.md):
+- On the 20-question W10 golden set, the cold pass had 0/20 cache hits; the
+  immediate warm pass had 20/20 hits.
+- Reported total cost was $0.00061 cold and $0.00001 warm; estimated warm-pass
+  savings were 99.1%. Totals are rounded by the measurement script, and the
+  result reflects a repeated golden-set workload rather than production traffic.
+- p50 latency was 3918 ms cold and 681 ms warm. The script reported p95 values
+  of 19284 ms and 830 ms respectively; with 20 queries, its p95 calculation
+  selects the maximum observed latency.
+- The cache measurement did not evaluate answer quality. W9's grounded
+  response rate was 8/20 (40%); W10 quality remains unmeasured.
+
+**Known gaps to revisit:**
+- No cache TTL (entries live forever until doc update). Fine at current
+  scale; revisit if cache DB grows past ~10K entries.
+- Cache invalidation is all-or-nothing. Per-source invalidation would let
+  us keep cache warm for unaffected topics. Deferred until we measure how
+  often full-clear hurts hit rate in practice.

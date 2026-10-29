@@ -21,6 +21,9 @@ from rank_bm25 import BM25Okapi
 
 from src.rag.qdrant_store import W9_COLLECTION_NAME, _get_client
 
+# W10
+from qdrant_client.models import Filter, IsEmptyCondition, PayloadField
+
 # Cross-encoder lazy-init (heavy)
 _reranker = None
 
@@ -116,7 +119,7 @@ def bm25_search(
     ]
 
 
-def dense_search(
+def dense_search_w9(
     query: str,
     k: int = 10,
     *,
@@ -170,9 +173,7 @@ def hybrid_retrieve(
     collection_name: str = W9_COLLECTION_NAME,
 ) -> list[dict]:
     """BM25 + Dense + RRF combined."""
-    bm25_hits = bm25_search(
-        query, k=k_per_retriever, collection_name=collection_name
-    )
+    bm25_hits = bm25_search(query, k=k_per_retriever, collection_name=collection_name)
     dense_hits = dense_search(
         query,
         k=k_per_retriever,
@@ -208,3 +209,49 @@ def retrieve(
         collection_name=collection_name,
     )
     return rerank(query, candidates, top_k=k)
+
+
+def _live_filter():
+    """Filter matching only not-yet-tombstoned chunks."""
+    return Filter(must=[IsEmptyCondition(is_empty=PayloadField(key="deleted_at"))])
+
+
+def dense_search(
+    query: str,
+    k: int = 10,
+    include_deleted: bool = False,
+    *,
+    usage: dict[str, int] | None = None,
+    collection_name: str = W9_COLLECTION_NAME,
+) -> list[dict]:
+    """Dense retrieval with tombstone filter by default.
+
+    include_deleted=True is the audit escape hatch — use only when
+    re-running historical evaluations against past KB state.
+    """
+    openai = _get_openai()
+    client = _get_client()
+    response = openai.embeddings.create(
+        model="text-embedding-3-small", input=[query]
+    )
+    q_vec = response.data[0].embedding
+    if usage is not None:
+        if response.usage is None:
+            raise RuntimeError("Embedding response did not include token usage")
+        usage["embedding_tokens"] = response.usage.prompt_tokens
+
+    query_filter = None if include_deleted else _live_filter()
+    hits = client.query_points(
+        collection_name=collection_name,
+        query=q_vec,
+        limit=k,
+        query_filter=query_filter,
+    ).points
+    return [
+        {
+            "id": str(h.id),
+            "score": h.score,
+            "doc": _normalize_payload(h.payload, str(h.id)),
+        }
+        for h in hits
+    ]

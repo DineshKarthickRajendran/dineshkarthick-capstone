@@ -15,14 +15,11 @@ This policy establishes practical standards for professional appearance while al
 Employees should wear clean, neat, and appropriate clothing suitable for their duties. Clothing should not create a safety hazard, interfere with equipment, or contain offensive or discriminatory material.
 
 
-## Client-Facing Days
+## Smart Casual Attire
 
-Business-professional or business-smart attire is expected when meeting clients, partners, auditors, regulators, or important external visitors. Managers should communicate special requirements in advance.
+Smart casual attire is permitted on all workdays, including when meeting clients, partners, auditors, regulators, or other external visitors. Managers may communicate specific requirements in advance when formal business attire is necessary for a particular event.
 
-
-## Casual Fridays
-
-Casual attire is generally permitted on Fridays when no formal external meeting is scheduled. Casual clothing must still be clean, safe, and appropriate for a professional workplace.
+Clothing must still be clean, neat, safe, and appropriate for a professional workplace. Safety requirements and reasonable event-specific requirements continue to apply.
 
 
 ## Safety Requirements
