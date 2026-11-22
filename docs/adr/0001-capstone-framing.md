@@ -85,23 +85,6 @@ out-of-scope requests.
 - Privacy, authentication, audit logging, retention, and redaction before any real HR data is introduced.
 - Agent tool permissions and human handoff workflow for later agentic releases.
 
-## W6 — Naive RAG live
-
-**Decision:** Naive RAG is now the default answer path. `/ask_batched` retrieves
-top-3 chunks from `data/corpus/` before generating.
-
-**Baseline KPIs** (see docs/kpi/wk6-snapshot.md):
-- Cost/query: $0.0001251
-- Latency p50: XXX ms
-- Grounded response rate: XX%
-
-**Top 3 known limits** (to be addressed W7-W11):
-1. Chunking cuts mid-sentence — W7 fixes with structure-aware chunker
-2. Retrieval is pure dense — W9 adds BM25 hybrid
-3. No metadata filtering — W7 introduces via Qdrant payload
-
-**Status:** In production for the demo API. Not yet suitable for real users;
-retrieval quality needs W7-W9 improvements first.
 
 ## Section 4 — Decisions locked at M1
 
@@ -149,6 +132,24 @@ Source: `docs/eval-run-001.md`. These are judge scores, not percentages of answe
 |---|---|
 | 2026-10-04 | Added M1 model and evaluation decisions, three sponsor KPI baselines and W12 targets, the W5 evaluation aggregate, three open questions, and the reserved DR #1 defence section. |
 
+
+## W6 — Naive RAG live
+
+**Decision:** Naive RAG is now the default answer path. `/ask_batched` retrieves
+top-3 chunks from `data/corpus/` before generating.
+
+**Baseline KPIs** (see docs/kpi/wk6-snapshot.md):
+- Cost/query: $0.0001251
+- Latency p50: XXX ms
+- Grounded response rate: XX%
+
+**Top 3 known limits** (to be addressed W7-W11):
+1. Chunking cuts mid-sentence — W7 fixes with structure-aware chunker
+2. Retrieval is pure dense — W9 adds BM25 hybrid
+3. No metadata filtering — W7 introduces via Qdrant payload
+
+**Status:** In production for the demo API. Not yet suitable for real users;
+retrieval quality needs W7-W9 improvements first.
 
 ## W7 — Qdrant-backed vector store
 
@@ -359,3 +360,7 @@ results to recursive chunking or PII scrubbing.
 - Cache invalidation is all-or-nothing. Per-source invalidation would let
   us keep cache warm for unaffected topics. Deferred until we measure how
   often full-clear hurts hit rate in practice.
+
+
+## WK12 - RAG Debugging + Evaluations
+We selected [configuration and boundary] after comparing [alternatives] on [versioned dataset/run]. It improved [defined metric] from [measured baseline] to [measured result], with [latency/context/cost effect]. We accepted [trade-off]. Evidence is in [run artifact]. We will revisit if [condition].

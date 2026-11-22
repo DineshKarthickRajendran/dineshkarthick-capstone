@@ -6,6 +6,7 @@ Replaces W8's pure-dense retrieval with:
 
 Public API:
   hybrid_retrieve(query, k=10) -> list[dict]
+  hybrid_retrieve_preloaded(store, bm25, chunks, query, top_k=3) -> list[dict]
   rerank(query, candidates, top_k=3) -> list[dict]
   retrieve(query, k=3) -> list[dict]   # full stack, use this from qdrant_rag.py
 """
@@ -19,7 +20,7 @@ from pathlib import Path
 from openai import OpenAI
 from rank_bm25 import BM25Okapi
 
-from src.rag.qdrant_store import W9_COLLECTION_NAME, _get_client
+from src.rag.qdrant_store import QdrantStore, W9_COLLECTION_NAME, _get_client
 
 # W10
 from qdrant_client.models import Filter, IsEmptyCondition, PayloadField
@@ -76,6 +77,42 @@ def _normalize_payload(payload: dict | None, point_id: str | int) -> dict:
     doc["source_id"] = str(source_id)
     doc["point_id"] = point_id
     return doc
+
+
+# Added below methods for RAGAS in W11
+def load_chunks_from_qdrant(store: QdrantStore) -> list[dict]:
+    """Load live chunks from a store, normalizing their Qdrant payload metadata."""
+    chunks = []
+    offset = None
+    while True:
+        points, next_offset = store.client.scroll(
+            collection_name=store.collection,
+            scroll_filter=_live_filter(),
+            limit=200,
+            offset=offset,
+            with_payload=True,
+            with_vectors=False,
+        )
+        chunks.extend(
+            _normalize_payload(point.payload, str(point.id)) for point in points
+        )
+        if next_offset is None:
+            return chunks
+        offset = next_offset
+
+
+# Added below methods for RAGAS in W11
+def build_bm25_index(chunks: list[dict]) -> BM25Okapi:
+    """Build a BM25 index from loaded chunks, retaining exact-ID tokenization."""
+    if not chunks:
+        raise ValueError("Cannot build a BM25 index without any chunks")
+    texts = []
+    for index, chunk in enumerate(chunks):
+        text = chunk.get("text")
+        if not isinstance(text, str):
+            raise ValueError(f"Chunk at index {index} is missing text")
+        texts.append(simple_tokenize(text))
+    return BM25Okapi(texts)
 
 
 @lru_cache(maxsize=1)
@@ -183,6 +220,53 @@ def hybrid_retrieve(
     return rrf_fuse([bm25_hits, dense_hits], k=60, top_n=k_final)
 
 
+def hybrid_retrieve_preloaded(
+    store: QdrantStore,
+    bm25: BM25Okapi,
+    chunks: list[dict],
+    query: str,
+    *,
+    top_k: int,
+    usage: dict[str, int] | None = None,
+) -> list[dict]:
+    """Hybrid retrieval over a caller-provided, tombstone-filtered chunk set."""
+    bm25_scores = bm25.get_scores(simple_tokenize(query))
+    if len(bm25_scores) != len(chunks):
+        raise ValueError("BM25 index does not match the supplied chunk list")
+    candidate_limit = max(10, top_k)
+    ranked_bm25 = sorted(
+        zip(bm25_scores, chunks), key=lambda item: item[0], reverse=True
+    )[:candidate_limit]
+    bm25_hits = [
+        {"id": str(chunk["point_id"]), "score": float(score), "doc": chunk}
+        for score, chunk in ranked_bm25
+    ]
+
+    response = _get_openai().embeddings.create(
+        model="text-embedding-3-small", input=[query]
+    )
+    if usage is not None:
+        if response.usage is None:
+            raise RuntimeError("Embedding response did not include token usage")
+        usage["embedding_tokens"] = response.usage.prompt_tokens
+
+    dense_points = store.client.query_points(
+        collection_name=store.collection,
+        query=response.data[0].embedding,
+        limit=candidate_limit,
+        query_filter=_live_filter(),
+    ).points
+    dense_hits = [
+        {
+            "id": str(point.id),
+            "score": point.score,
+            "doc": _normalize_payload(point.payload, str(point.id)),
+        }
+        for point in dense_points
+    ]
+    return [hit["doc"] for hit in rrf_fuse([bm25_hits, dense_hits], k=60, top_n=top_k)]
+
+
 def rerank(query: str, candidates: list[dict], top_k: int = 3) -> list[dict]:
     """Cross-encoder reranking — score (query, candidate.text) pairs."""
     reranker = _get_reranker()
@@ -231,9 +315,7 @@ def dense_search(
     """
     openai = _get_openai()
     client = _get_client()
-    response = openai.embeddings.create(
-        model="text-embedding-3-small", input=[query]
-    )
+    response = openai.embeddings.create(model="text-embedding-3-small", input=[query])
     q_vec = response.data[0].embedding
     if usage is not None:
         if response.usage is None:

@@ -101,8 +101,15 @@ def ask_rag(
     settings: Settings | None = None,
     k: int = 3,
     cache_threshold: float = 0.95,
+    *,
+    use_cache: bool = True,
+    refresh_cache: bool = False,
 ) -> dict[str, Any]:
-    """Full pipeline: embed → retrieve → prompt → generate. Returns dict."""
+    """Run RAG with normal, bypassed, or refresh-only semantic-cache behavior.
+
+    ``use_cache=False`` bypasses cache reads and writes. ``refresh_cache=True``
+    skips cache reads but stores the newly generated answer.
+    """
 
     # W10
     """Full RAG with 3-layer caching.
@@ -119,21 +126,24 @@ def ask_rag(
 
     client = _openai()
 
-    # ── Layer 1: semantic cache ──
-    q_vec = (
-        client.embeddings.create(model="text-embedding-3-small", input=[question])
-        .data[0]
-        .embedding
-    )
+    q_vec: list[float] | None = None
+    if use_cache or refresh_cache:
+        # ── Layer 1: semantic cache ──
+        q_vec = (
+            client.embeddings.create(model="text-embedding-3-small", input=[question])
+            .data[0]
+            .embedding
+        )
 
-    hit = cache.lookup(q_vec, threshold=cache_threshold)
-    if hit:
-        return {
-            "answer": hit["answer"],
-            "cache_hit": True,
-            "similarity": hit["similarity"],
-            "matched": hit["matched_question"],
-        }
+        if use_cache and not refresh_cache:
+            hit = cache.lookup(q_vec, threshold=cache_threshold)
+            if hit:
+                return {
+                    "answer": hit["answer"],
+                    "cache_hit": True,
+                    "similarity": hit["similarity"],
+                    "matched": hit["matched_question"],
+                }
 
     # ── Miss: full RAG pipeline ──
     retrieved = retrieve_v9(
@@ -171,9 +181,11 @@ def ask_rag(
         messages=[{"role": "user", "content": prompt}],
     )
     answer = resp.choices[0].message.content
+    if answer is None:
+        raise RuntimeError("RAG model returned an empty answer")
 
-    # Store in cache for next time
-    cache.put(question, q_vec, answer)
+    if q_vec is not None:
+        cache.put(question, q_vec, answer)
 
     return {
         "answer": answer,
