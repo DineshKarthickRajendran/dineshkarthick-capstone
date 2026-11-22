@@ -1,0 +1,40 @@
+## Run output
+
+### Run 1
+
+| ID | Type | Hit | Abstained | Grounded | OK |
+|:---|:---|:---:|:---:|:---:|:---:|
+| q1_red_headed_league_assistant | answerable | ✓ | ✓ | ✗ | ✗ |
+| q2_speckled_band_weapon | answerable | ✓ | ✓ | ✗ | ✗ |
+| q3_scandal_bohemia_adler | answerable | ✓ | ✗ | ✓ | ✓ |
+| q4_engineers_thumb_press | answerable | ✓ | ✗ | ✓ | ✓ |
+| abstain_moriarty | abstain | n/a | ✓ | n/a | ✓ |
+| abstain_out_of_domain | abstain | n/a | ✓ | n/a | ✓ |
+
+| Metric | Result | Notes |
+|:---|---:|:---|
+| Retrieval hit rate | 1.0 | 4 answerable questions |
+| Grounded & cited rate | 0.5 | KPI: grounded response rate |
+| Abstention accuracy | 1.0 | 2 should-abstain questions |
+| Hallucination rate | 0.0 | KPI: hallucination rate |
+
+### Run 2
+
+| ID | Type | Hit | Abstained | Grounded | OK |
+|:---|:---|:---:|:---:|:---:|:---:|
+| q1_red_headed_league_assistant | answerable | ✓ | ✓ | ✗ | ✗ |
+| q2_speckled_band_weapon | answerable | ✓ | ✓ | ✗ | ✗ |
+| q3_scandal_bohemia_adler | answerable | ✓ | ✗ | ✓ | ✓ |
+| q4_engineers_thumb_press | answerable | ✓ | ✗ | ✓ | ✓ |
+| abstain_moriarty | abstain | n/a | ✓ | n/a | ✓ |
+| abstain_out_of_domain | abstain | n/a | ✓ | n/a | ✓ |
+| learner_engineers_press | answerable | ✓ | ✗ | ✓ | ✓ |
+| learner_blue_carbuncle | answerable | ✓ | ✗ | ✓ | ✓ |
+| learner_baskerville_hound | abstain | n/a | ✓ | n/a | ✓ |
+
+| Metric | Result | Notes |
+|:---|---:|:---|
+| Retrieval hit rate | 1.0 | 6 answerable questions |
+| Grounded & cited rate | 0.6666666666666666 | KPI: grounded response rate |
+| Abstention accuracy | 1.0 | 3 should-abstain questions |
+| Hallucination rate | 0.0 | KPI: hallucination rate |
